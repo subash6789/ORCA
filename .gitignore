@@ -1,0 +1,7 @@
+data/ocean_data/
+.venv/
+__pycache__/
+*.pyc
+main_backup_phase19.py
+index_backup_phase19.html
+.env
