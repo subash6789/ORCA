@@ -5,3 +5,4 @@ __pycache__/
 main_backup_phase19.py
 index_backup_phase19.html
 .env
+data/marine_data.json
