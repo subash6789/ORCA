@@ -1,5 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from contextlib import asynccontextmanager
+import asyncio
 
 from ocean_agent import ocean_agent
 from weather_agent import weather_agent
@@ -8,247 +10,329 @@ from pfz_agent import pfz_agent
 from safety_agent import safety_agent
 from satellite_agent import satellite_agent
 from language_agent import language_agent
+from auto_update import automatic_update_loop
 
-app = FastAPI(title="ORCA Real Marine Assistant")
+
+# =========================================================
+# APPLICATION LIFESPAN
+# =========================================================
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+
+    update_task = asyncio.create_task(
+        automatic_update_loop()
+    )
+
+    print("[ORCA] Automatic update service started.")
+
+    try:
+        yield
+
+    finally:
+
+        update_task.cancel()
+
+        try:
+            await update_task
+
+        except asyncio.CancelledError:
+            pass
+
+        print("[ORCA] Automatic update service stopped.")
+
+
+# =========================================================
+# FASTAPI APPLICATION
+# =========================================================
+
+app = FastAPI(
+    title="ORCA Real Marine Assistant",
+    lifespan=lifespan
+)
+
+
+# =========================================================
+# CORS
+# =========================================================
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "http://127.0.0.1:5501",
+        "http://localhost:5501"
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 
+# =========================================================
+# ROOT
+# =========================================================
+
 @app.get("/")
 def home():
+
     return {
         "message": "ORCA Real Backend is running!",
-        "project": "ORCA - Marine EcoSystem Reasoning with Collaborative Agents"
+        "project": (
+            "ORCA - Marine EcoSystem Reasoning "
+            "with Collaborative Agents"
+        )
     }
 
 
+# =========================================================
+# HEALTH CHECK
+# =========================================================
+
 @app.get("/health")
 def health():
+
     return {
         "status": "OK",
         "message": "ORCA backend is healthy"
     }
 
 
-@app.get("/ocean")
-def ocean():
-    return ocean_agent()
+# =========================================================
+# OCEAN AGENT
+# =========================================================
 
+@app.get("/ocean")
+def ocean(
+    state: str = "Tamil Nadu"
+):
+
+    return ocean_agent(state)
+
+
+# =========================================================
+# WEATHER AGENT
+# =========================================================
 
 @app.get("/weather")
-def weather():
-    return weather_agent()
+def weather(
+    state: str = "Tamil Nadu"
+):
 
+    return weather_agent(state)
+
+
+# =========================================================
+# GIS AGENT
+# =========================================================
 
 @app.get("/gis")
-def gis():
-    return gis_agent()
+def gis(
+    state: str = "Tamil Nadu",
+    district: str = None
+):
 
+    return gis_agent(state)
+
+
+# =========================================================
+# PFZ / FISHING AGENT
+# =========================================================
 
 @app.get("/pfz")
-def pfz():
-    return pfz_agent()
+def pfz(
+    state: str = "Tamil Nadu"
+):
 
+    return pfz_agent(state)
+
+
+# =========================================================
+# SAFETY AGENT
+# =========================================================
 
 @app.get("/safety")
-def safety():
-    return safety_agent()
+def safety(
+    state: str = "Tamil Nadu"
+):
 
+    return safety_agent(state)
+
+
+# =========================================================
+# SATELLITE AGENT
+# =========================================================
 
 @app.get("/satellite")
-def satellite():
-    return satellite_agent()
+def satellite(
+    state: str = "Tamil Nadu"
+):
 
+    return satellite_agent(state)
+
+
+# =========================================================
+# LANGUAGE AGENT
+# =========================================================
 
 @app.get("/language")
-def language(question: str = ""):
+def language(
+    question: str = ""
+):
+
     return language_agent(question)
 
 
-@app.get("/reasoning")
-def reasoning(
-    question: str = "What is the marine condition, PFZ status, satellite status and safety near Chennai?"
-):
+# =========================================================
+# COLLABORATIVE AGENTS
+# =========================================================
 
-    language = language_agent(question)
-    ocean = ocean_agent()
-    weather = weather_agent()
-    gis = gis_agent()
-    pfz = pfz_agent()
-    satellite = satellite_agent()
-    safety = safety_agent()
-
-    reasoning_points = []
-
-    # Language
-    reasoning_points.append(
-        f"Detected language: {language['detected_language']}."
-    )
-
-    # Ocean
-    if ocean.get("sea_surface_temperature_c") is not None:
-        reasoning_points.append(
-            f"Ocean temperature is {ocean['sea_surface_temperature_c']} °C."
-        )
-
-    if ocean.get("current_speed_ms") is not None:
-        reasoning_points.append(
-            f"Average ocean current speed is {ocean['current_speed_ms']} m/s."
-        )
-
-    if ocean.get("salinity") is not None:
-        reasoning_points.append(
-            f"Sea-water salinity is {ocean['salinity']}."
-        )
-
-    # Weather
-    if weather.get("temperature_c") is not None:
-        reasoning_points.append(
-            f"Current air temperature is {weather['temperature_c']} °C."
-        )
-
-    if weather.get("wind_speed_kmh") is not None:
-        reasoning_points.append(
-            f"Wind speed is {weather['wind_speed_kmh']} km/h."
-        )
-
-    precipitation = weather.get("precipitation_mm")
-
-    if precipitation is not None:
-        if precipitation > 0:
-            reasoning_points.append(
-                f"Current precipitation is {precipitation} mm."
-            )
-        else:
-            reasoning_points.append(
-                "No precipitation is currently reported."
-            )
-
-    # GIS
-    location = gis.get("location", "Unknown")
-    marine_region = gis.get("marine_region", "Unknown")
-
-    reasoning_points.append(
-        f"Location identified as {location} in the {marine_region}."
-    )
-
-    # PFZ
-    pfz_status = pfz.get(
-        "pfz_available",
-        "PFZ information unavailable"
-    )
-
-    pfz_message = pfz.get(
-        "message",
-        "PFZ information is not currently available."
-    )
-
-    pfz_assessment = (
-        f"PFZ status: {pfz_status}. {pfz_message}"
-    )
-
-    reasoning_points.append(pfz_assessment)
-
-    # Satellite
-    satellite_name = satellite.get(
-        "satellite",
-        "Satellite"
-    )
-
-    satellite_status = satellite.get(
-        "integration_status",
-        "Unknown"
-    )
-
-    satellite_message = satellite.get(
-        "message",
-        "Satellite information unavailable."
-    )
-
-    satellite_assessment = (
-        f"Satellite status: {satellite_name} - "
-        f"{satellite_status}. {satellite_message}"
-    )
-
-    reasoning_points.append(satellite_assessment)
-
-    # Safety
-    alerts = safety.get("alerts", [])
-
-    if alerts:
-        safety_assessment = (
-            "Safety alerts detected: " + " ".join(alerts)
-        )
-    else:
-        safety_assessment = (
-            "Safety assessment: No immediate warning condition detected."
-        )
-
-    reasoning_points.append(safety_assessment)
-
-    # Final assessment
-    final_assessment = (
-        "ORCA combines Language, Ocean, Weather, GIS, PFZ, "
-        "Satellite and Safety agents to provide a marine "
-        "decision-support assessment."
-    )
-
-    if alerts:
-        final_assessment += (
-            " Safety conditions require attention based on "
-            "the current demo rules."
-        )
-    else:
-        final_assessment += (
-            " No immediate warning condition was detected "
-            "by the current demo safety rules."
-        )
+@app.get("/agents")
+def get_agents():
 
     return {
-        "agent": "ORCA Reasoning Layer",
-        "status": "SUCCESS",
-        "question": question,
 
-        "selected_agents": [
-            "Language Agent",
-            "Ocean Agent",
-            "Weather Agent",
-            "GIS Agent",
-            "PFZ Agent",
-            "Satellite Agent",
-            "Safety Agent"
+        "status": "SUCCESS",
+
+        "system": (
+            "ORCA Collaborative Agent System"
+        ),
+
+        "agent_count": 6,
+
+        "agents": [
+
+            {
+                "name": "Ocean Agent",
+                "status": "Integration Ready",
+                "responsibilities": [
+                    "SST",
+                    "Waves",
+                    "Currents"
+                ]
+            },
+
+            {
+                "name": "Weather Agent",
+                "status": "Integration Ready",
+                "responsibilities": [
+                    "Wind",
+                    "Weather",
+                    "Storms"
+                ]
+            },
+
+            {
+                "name": "GIS Agent",
+                "status": "Integration Ready",
+                "responsibilities": [
+                    "Coordinates",
+                    "Distance",
+                    "Spatial"
+                ]
+            },
+
+            {
+                "name": "Fishing Agent",
+                "status": "Integration Ready",
+                "responsibilities": [
+                    "PFZ",
+                    "Chlorophyll",
+                    "Fishing"
+                ]
+            },
+
+            {
+                "name": "Safety Agent",
+                "status": "Integration Ready",
+                "responsibilities": [
+                    "Hazards",
+                    "Alerts",
+                    "Risk"
+                ]
+            },
+
+            {
+                "name": "Coordinator / Planner",
+                "status": "Integration Ready",
+                "responsibilities": [
+                    "Planning",
+                    "Coordination",
+                    "Evidence"
+                ]
+            }
         ],
 
-        "language_analysis": language,
-        "ocean_analysis": ocean,
-        "weather_analysis": weather,
-        "gis_analysis": gis,
-        "pfz_analysis": pfz,
-        "satellite_analysis": satellite,
-        "safety_analysis": safety,
+        "source": "ORCA Backend",
 
-        "reasoning_points": reasoning_points,
-
-        "pfz_assessment": pfz_assessment,
-        "satellite_assessment": satellite_assessment,
-        "safety_assessment": safety_assessment,
-
-        "final_assessment": final_assessment,
-
-        "source_note": (
-            "ORCA provides decision support. PFZ and satellite "
-            "information are currently integration-ready. "
-            "Safety results are not official government warnings."
+        "note": (
+            "These agent records describe the ORCA "
+            "collaborative-agent architecture and "
+            "integration status. They do not represent "
+            "fabricated live marine observations."
         )
     }
 
 
+# =========================================================
+# ORCA REASONING / COORDINATOR
+# =========================================================
+
+@app.get("/reasoning")
+def reasoning(
+    question: str = "What are the marine conditions?",
+    state: str = "Tamil Nadu",
+    district: str = None
+):
+
+    try:
+
+        from orca_reasoning import orca_reasoning
+
+        result = orca_reasoning(
+            question,
+            state
+        )
+
+        result["state"] = state
+        result["district"] = district
+
+        return result
+
+    except Exception as e:
+
+        return {
+
+            "agent": "ORCA Reasoning Layer",
+
+            "status": "ERROR",
+
+            "question": question,
+
+            "state": state,
+
+            "district": district,
+
+            "message": (
+                "Unable to generate ORCA reasoning."
+            ),
+
+            "error": str(e)
+        }
+
+
+# =========================================================
+# ORCA AI ASSISTANT
+# =========================================================
+
 @app.get("/ask")
-def ask(question: str):
-    return reasoning(question)
+def ask(
+    question: str,
+    state: str = "Tamil Nadu",
+    district: str = None
+):
+
+    return reasoning(
+        question,
+        state,
+        district
+    )
