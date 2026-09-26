@@ -1,0 +1,2349 @@
+<!DOCTYPE html>
+
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+```
+<title>ORCA Marine Intelligence</title>
+
+<meta
+    name="description"
+    content="ORCA Marine Intelligence - Marine ecosystem reasoning and decision-support platform"
+>
+
+<link rel="stylesheet" href="css/style.css">
+
+<link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+>
+```
+
+</head>
+
+<body>
+
+<div class="app-container">
+
+```
+<!-- ================================
+     SIDEBAR
+================================= -->
+<aside class="sidebar" id="sidebar">
+
+    <div class="sidebar-header">
+
+        <div class="orca-logo">
+            <span class="logo-icon">◉</span>
+
+            <div>
+                <h1>ORCA</h1>
+                <span>Marine Intelligence</span>
+            </div>
+        </div>
+
+        <button
+            class="sidebar-close"
+            id="sidebarClose"
+            aria-label="Close navigation"
+        >
+            ×
+        </button>
+
+    </div>
+
+    <nav class="sidebar-nav">
+
+        <p class="nav-section-title">MAIN</p>
+
+        <button class="nav-item active" data-page="dashboard">
+            <span class="nav-icon">⌂</span>
+            <span>Dashboard</span>
+        </button>
+
+        <button class="nav-item" data-page="assistant">
+            <span class="nav-icon">✦</span>
+            <span>ORCA AI Assistant</span>
+        </button>
+
+        <button class="nav-item" data-page="ocean">
+            <span class="nav-icon">≈</span>
+            <span>Ocean Intelligence</span>
+        </button>
+
+        <button class="nav-item" data-page="weather">
+            <span class="nav-icon">☁</span>
+            <span>Weather Intelligence</span>
+        </button>
+
+        <button class="nav-item" data-page="maps">
+            <span class="nav-icon">⌖</span>
+            <span>GIS & Maps</span>
+        </button>
+
+        <button class="nav-item" data-page="fishing">
+            <span class="nav-icon">♒</span>
+            <span>Fishing / PFZ</span>
+        </button>
+
+        <button class="nav-item" data-page="satellite">
+            <span class="nav-icon">◌</span>
+            <span>Satellite Intelligence</span>
+        </button>
+
+        <p class="nav-section-title">ANALYSIS</p>
+
+        <button class="nav-item" data-page="safety">
+            <span class="nav-icon">!</span>
+            <span>Marine Safety</span>
+        </button>
+
+        <button class="nav-item" data-page="agents">
+            <span class="nav-icon">◎</span>
+            <span>Collaborative Agents</span>
+        </button>
+
+        <button class="nav-item" data-page="reasoning">
+            <span class="nav-icon">◇</span>
+            <span>AI Reasoning</span>
+        </button>
+
+        <p class="nav-section-title">SYSTEM</p>
+
+        <button class="nav-item" data-page="sources">
+            <span class="nav-icon">▤</span>
+            <span>Data Sources</span>
+        </button>
+
+        <button class="nav-item" data-page="settings">
+            <span class="nav-icon">⚙</span>
+            <span>Settings</span>
+        </button>
+
+    </nav>
+
+    <div class="sidebar-footer">
+
+        <div class="system-status">
+
+            <span class="status-dot"></span>
+
+            <div>
+                <strong>System Ready</strong>
+                <small>Frontend connected</small>
+            </div>
+
+        </div>
+
+        <div class="version">
+            ORCA • SIH 2026
+        </div>
+
+    </div>
+
+</aside>
+
+
+<!-- ================================
+     MAIN AREA
+================================= -->
+<main class="main-area">
+
+    <header class="top-header">
+
+        <button
+            class="mobile-menu"
+            id="mobileMenu"
+            aria-label="Open navigation"
+        >
+            ☰
+        </button>
+
+        <div class="header-title">
+
+            <span class="breadcrumb">
+                Marine Intelligence
+            </span>
+
+            <h2 id="pageTitle">
+                Dashboard
+            </h2>
+
+        </div>
+
+        <div class="header-actions">
+
+            <div class="region-selector">
+
+                <label for="regionSelect">
+                    Region
+                </label>
+
+                <!-- UPDATED: ONLY 4 SUPPORTED REGIONS -->
+                <select id="regionSelect">
+
+                    <option value="Tamil Nadu">
+                        Tamil Nadu
+                    </option>
+
+                    <option value="Kerala">
+                        Kerala
+                    </option>
+
+                    <option value="Karnataka">
+                        Karnataka
+                    </option>
+
+                    <option value="Gujarat">
+                        Gujarat
+                    </option>
+
+                </select>
+
+            </div>
+
+
+            <div
+                class="connection-status"
+                id="connectionStatus"
+            >
+
+                <span class="status-dot offline"></span>
+
+                <span>
+                    Checking connection...
+                </span>
+
+            </div>
+
+
+            <select
+                class="language-selector"
+                id="languageSelector"
+                aria-label="Language"
+            >
+
+                <option value="en">
+                    English
+                </option>
+
+                <option value="ta">
+                    தமிழ்
+                </option>
+
+            </select>
+
+        </div>
+
+    </header>
+
+
+    <div class="page-content">
+
+
+        <!-- =================================
+             DASHBOARD
+        ================================= -->
+        <section
+            class="page-section active"
+            id="page-dashboard"
+        >
+
+            <div class="page-intro">
+
+                <div>
+
+                    <span class="eyebrow">
+                        MARINE ECOSYSTEM INTELLIGENCE
+                    </span>
+
+                    <h2>
+                        Ocean Overview
+                    </h2>
+
+                    <p>
+                        Monitor available marine information,
+                        environmental conditions and validated
+                        decision-support data.
+                    </p>
+
+                </div>
+
+                <button
+                    class="btn primary"
+                    id="refreshDashboard"
+                >
+                    ↻ Refresh Data
+                </button>
+
+            </div>
+
+
+            <div class="data-notice demo">
+
+                <span class="notice-icon">
+                    ⓘ
+                </span>
+
+                <div>
+
+                    <strong>
+                        Demo / Backend Data Mode
+                    </strong>
+                    <p>
+                         Ocean observations are retrieved from the connected backend dataset. Weather and other information may come from separate sources or remain integration-ready. ORCA does not label unverified information as live observations.
+                    </p>
+
+                </div>
+
+            </div>
+
+
+            <div class="metrics-grid">
+
+                <article class="metric-card">
+
+                    <div class="metric-header">
+                        <span>Sea Surface Temperature</span>
+                        <span class="metric-icon">🌊</span>
+                    </div>
+
+                    <div
+                        class="metric-value"
+                        id="sstValue"
+                    >
+                        —
+                    </div>
+
+                    <div
+                        class="metric-meta"
+                        id="sstMeta"
+                    >
+                        Data unavailable
+                    </div>
+
+                </article>
+
+
+                <article class="metric-card">
+
+                    <div class="metric-header">
+                        <span>Wave Height</span>
+                        <span class="metric-icon">〰</span>
+                    </div>
+
+                    <div
+                        class="metric-value"
+                        id="waveValue"
+                    >
+                        —
+                    </div>
+
+                    <div
+                        class="metric-meta"
+                        id="waveMeta"
+                    >
+                        Data unavailable
+                    </div>
+
+                </article>
+
+
+                <article class="metric-card">
+
+                    <div class="metric-header">
+                        <span>Wind Speed</span>
+                        <span class="metric-icon">↝</span>
+                    </div>
+
+                    <div
+                        class="metric-value"
+                        id="windValue"
+                    >
+                        —
+                    </div>
+
+                    <div
+                        class="metric-meta"
+                        id="windMeta"
+                    >
+                        Data unavailable
+                    </div>
+
+                </article>
+
+
+                <article class="metric-card">
+
+                    <div class="metric-header">
+                        <span>Ocean Current</span>
+                        <span class="metric-icon">→</span>
+                    </div>
+
+                    <div
+                        class="metric-value"
+                        id="currentValue"
+                    >
+                        —
+                    </div>
+
+                    <div
+                        class="metric-meta"
+                        id="currentMeta"
+                    >
+                        Data unavailable
+                    </div>
+
+                </article>
+
+
+                <article class="metric-card">
+
+                    <div class="metric-header">
+                        <span>Chlorophyll</span>
+                        <span class="metric-icon">✦</span>
+                    </div>
+
+                    <div
+                        class="metric-value"
+                        id="chlorophyllValue"
+                    >
+                        —
+                    </div>
+
+                    <div
+                        class="metric-meta"
+                        id="chlorophyllMeta"
+                    >
+                        Data unavailable
+                    </div>
+
+                </article>
+
+
+                <article class="metric-card">
+
+                    <div class="metric-header">
+                        <span>PFZ Status</span>
+                        <span class="metric-icon">⌖</span>
+                    </div>
+
+                    <div
+                        class="metric-value status-text"
+                        id="pfzValue"
+                    >
+                        —
+                    </div>
+
+                    <div
+                        class="metric-meta"
+                        id="pfzMeta"
+                    >
+                        Data unavailable
+                    </div>
+
+                </article>
+
+            </div>
+
+
+            <div class="dashboard-grid">
+
+                <article class="panel large-panel">
+
+                    <div class="panel-header">
+
+                        <div>
+
+                            <span class="panel-kicker">
+                                ENVIRONMENTAL DATA
+                            </span>
+
+                            <h3>
+                                Marine Conditions
+                            </h3>
+
+                        </div>
+
+                        <span class="data-badge">
+                            Backend
+                        </span>
+
+                    </div>
+
+                    <div
+                        class="chart-placeholder"
+                        id="marineChart"
+                    >
+
+                        <div class="empty-state">
+
+                            <div class="empty-icon">
+                                ≈
+                            </div>
+
+                            <h4>
+                                Chart Ready
+                            </h4>
+
+                            <p>
+                                Visualization will use validated
+                                backend data when available.
+                            </p>
+
+                        </div>
+
+                    </div>
+
+                </article>
+
+
+                <article class="panel insight-panel">
+
+                    <div class="panel-header">
+
+                        <div>
+
+                            <span class="panel-kicker">
+                                ORCA INTELLIGENCE
+                            </span>
+
+                            <h3>
+                                AI Insight
+                            </h3>
+
+                        </div>
+
+                        <span class="ai-badge">
+                            AI
+                        </span>
+
+                    </div>
+
+                    <div
+                        class="insight-content"
+                        id="dashboardInsight"
+                    >
+
+                        <div class="empty-state">
+
+                            <div class="empty-icon">
+                                ✦
+                            </div>
+
+                            <h4>
+                                Insight unavailable
+                            </h4>
+
+                            <p>
+                                AI reasoning will appear here
+                                after the corresponding backend
+                                capability is connected.
+                            </p>
+
+                        </div>
+
+                    </div>
+
+                </article>
+
+            </div>
+
+
+            <article class="panel map-panel">
+
+                <div class="panel-header">
+
+                    <div>
+
+                        <span class="panel-kicker">
+                            GEOSPATIAL VIEW
+                        </span>
+
+                        <h3>
+                            Marine Map
+                        </h3>
+
+                    </div>
+
+                    <button
+                        class="btn secondary"
+                        data-page-link="maps"
+                    >
+                        Open Full Map
+                    </button>
+
+                </div>
+
+                <div
+                    class="map-container"
+                    id="dashboardMap"
+                ></div>
+
+            </article>
+
+
+            <article class="panel">
+
+                <div class="panel-header">
+
+                    <div>
+
+                        <span class="panel-kicker">
+                            DATA PIPELINE
+                        </span>
+
+                        <h3>
+                            Recent Updates
+                        </h3>
+
+                    </div>
+
+                </div>
+
+                <div
+                    class="updates-list"
+                    id="recentUpdates"
+                >
+
+                    <div class="empty-state compact">
+
+                        <p>
+                            No validated updates available yet.
+                        </p>
+
+                    </div>
+
+                </div>
+
+            </article>
+
+        </section>
+
+
+        <!-- =================================
+             AI ASSISTANT
+        ================================= -->
+        <section
+            class="page-section"
+            id="page-assistant"
+        >
+
+            <div class="page-intro">
+
+                <div>
+
+                    <span class="eyebrow">
+                        COLLABORATIVE MARINE AI
+                    </span>
+
+                    <h2>
+                        ORCA AI Assistant
+                    </h2>
+
+                    <p>
+                        Ask questions about available marine
+                        information and connected data sources.
+                    </p>
+
+                </div>
+
+            </div>
+
+
+            <div class="assistant-layout">
+
+                <article class="panel assistant-panel">
+
+                    <div
+                        class="chat-messages"
+                        id="chatMessages"
+                    >
+
+                        <div class="assistant-message">
+
+                            <div class="message-avatar">
+                                O
+                            </div>
+
+                            <div class="message-content">
+
+                                <strong>
+                                    ORCA Assistant
+                                </strong>
+
+                                <p>
+                                    Hello. I can help you explore
+                                    marine information available
+                                    through the connected backend.
+                                </p>
+
+                                <small>
+                                    AI backend status: Connected
+                                </small>
+
+                            </div>
+
+                        </div>
+
+                    </div>
+
+
+                    <div class="suggested-questions">
+
+                        <button class="suggestion">
+                            What ocean data is available?
+                        </button>
+
+                        <button class="suggestion">
+                            Show available PFZ information.
+                        </button>
+
+                        <button class="suggestion">
+                            Explain the selected region.
+                        </button>
+
+                    </div>
+
+
+                    <form
+                        class="chat-input"
+                        id="chatForm"
+                    >
+
+                        <input
+                            type="text"
+                            id="chatInput"
+                            placeholder="Ask ORCA about marine information..."
+                            autocomplete="off"
+                        >
+
+                        <button
+                            type="submit"
+                            class="btn primary"
+                        >
+                            Send
+                        </button>
+
+                    </form>
+
+                </article>
+
+            </div>
+
+        </section>
+
+
+        <!-- =================================
+             OCEAN
+        ================================= -->
+        <section
+            class="page-section"
+            id="page-ocean"
+        >
+
+            <div class="page-intro">
+
+                <div>
+
+                    <span class="eyebrow">
+                        OCEAN DATA
+                    </span>
+
+                    <h2>
+                        Ocean Intelligence
+                    </h2>
+
+                    <p>
+                        Explore available oceanographic parameters
+                        for the selected region.
+                    </p>
+
+                </div>
+
+            </div>
+
+
+            <div class="control-bar">
+
+                <label>
+
+                    Parameter
+
+                    <select id="oceanParameter">
+
+                        <option value="sst">
+                            Sea Surface Temperature
+                        </option>
+
+                        <option value="wave">
+                            Significant Wave Height
+                        </option>
+
+                        <option value="current">
+                            Surface Current
+                        </option>
+
+                        <option value="chlorophyll">
+                            Chlorophyll
+                        </option>
+
+                        <option value="mld">
+                            Mixed Layer Depth
+                        </option>
+
+                    </select>
+
+                </label>
+
+            </div>
+
+
+            <div class="metrics-grid ocean-metrics">
+
+                <article class="metric-card">
+
+                    <div class="metric-header">
+                        SST
+                    </div>
+
+                    <div
+                        class="metric-value"
+                        id="oceanSst"
+                    >
+                        —
+                    </div>
+
+                    <div class="metric-meta">
+                        Backend data
+                    </div>
+
+                </article>
+
+
+                <article class="metric-card">
+
+                    <div class="metric-header">
+                        Wave Height
+                    </div>
+
+                    <div
+                        class="metric-value"
+                        id="oceanWave"
+                    >
+                        —
+                    </div>
+
+                    <div class="metric-meta">
+                        Backend data
+                    </div>
+
+                </article>
+
+
+                <article class="metric-card">
+
+                    <div class="metric-header">
+                        Current
+                    </div>
+
+                    <div
+                        class="metric-value"
+                        id="oceanCurrent"
+                    >
+                        —
+                    </div>
+
+                    <div class="metric-meta">
+                        Backend data
+                    </div>
+
+                </article>
+
+
+                <article class="metric-card">
+
+                    <div class="metric-header">
+                        Mixed Layer Depth
+                    </div>
+
+                    <div
+                        class="metric-value"
+                        id="oceanMixedLayerDepth"
+                    >
+                        —
+                    </div>
+
+                    <div class="metric-meta">
+                        Backend data
+                    </div>
+
+                </article>
+
+            </div>
+
+
+            <article class="panel">
+
+                <div class="panel-header">
+
+                    <div>
+
+                        <span class="panel-kicker">
+                            OCEAN VISUALIZATION
+                        </span>
+
+                        <h3>
+                            Parameter Analysis
+                        </h3>
+
+                    </div>
+
+                </div>
+
+                <div
+                    class="chart-placeholder"
+                    id="oceanChart"
+                >
+
+                    <div class="empty-state">
+
+                        <div class="empty-icon">
+                            ≈
+                        </div>
+
+                        <h4>
+                            Waiting for data
+                        </h4>
+
+                        <p>
+                            The selected parameter will be
+                            visualized when supported data is
+                            returned by the backend.
+                        </p>
+
+                    </div>
+
+                </div>
+
+            </article>
+
+        </section>
+
+
+        <!-- =================================
+             WEATHER
+        ================================= -->
+        <section
+            class="page-section"
+            id="page-weather"
+        >
+
+            <div class="page-intro">
+
+                <div>
+
+                    <span class="eyebrow">
+                        ATMOSPHERIC CONDITIONS
+                    </span>
+
+                    <h2>
+                        Weather Intelligence
+                    </h2>
+
+                    <p>
+                        Weather information will be displayed only
+                        when a validated weather source is connected.
+                    </p>
+
+                </div>
+
+            </div>
+
+
+            <div class="integration-state">
+
+                <div class="integration-icon">
+                    ☁
+                </div>
+
+                <h3>
+                    Weather Integration Ready
+                </h3>
+
+                <p>
+                    No weather endpoint has been assumed.
+                    Connect an authorized weather service through
+                    the FastAPI backend to display observations
+                    or forecasts.
+                </p>
+
+                <span class="status-label">
+                    Not Connected
+                </span>
+
+            </div>
+
+        </section>
+
+
+        <!-- =================================
+             GIS
+        ================================= -->
+        <section
+            class="page-section"
+            id="page-maps"
+        >
+
+            <div class="page-intro">
+
+                <div>
+
+                    <span class="eyebrow">
+                        GEOSPATIAL INTELLIGENCE
+                    </span>
+
+                    <h2>
+                        GIS & Maps
+                    </h2>
+
+                    <p>
+                        Interactive map for supported marine
+                        geospatial information.
+                    </p>
+
+                </div>
+
+            </div>
+
+
+            <div class="map-toolbar">
+
+                <div class="coordinate-inputs">
+
+                    <label>
+
+                        Latitude
+
+                        <input
+                            type="number"
+                            id="latitudeInput"
+                            step="any"
+                            min="-90"
+                            max="90"
+                            placeholder="e.g. 13.08"
+                        >
+
+                    </label>
+
+
+                    <label>
+
+                        Longitude
+
+                        <input
+                            type="number"
+                            id="longitudeInput"
+                            step="any"
+                            min="-180"
+                            max="180"
+                            placeholder="e.g. 80.27"
+                        >
+
+                    </label>
+
+
+                    <button
+                        class="btn primary"
+                        id="locateButton"
+                    >
+                        Locate
+                    </button>
+
+                </div>
+
+            </div>
+
+
+            <article class="panel full-map-panel">
+
+                <div
+                    class="map-container large"
+                    id="mainMap"
+                ></div>
+
+            </article>
+
+        </section>
+
+
+        <!-- =================================
+             PFZ
+        ================================= -->
+        <section
+            class="page-section"
+            id="page-fishing"
+        >
+
+            <div class="page-intro">
+
+                <div>
+
+                    <span class="eyebrow">
+                        FISHING INTELLIGENCE
+                    </span>
+
+                    <h2>
+                        Fishing / PFZ
+                    </h2>
+
+                    <p>
+                        View available PFZ information and
+                        supporting environmental parameters.
+                    </p>
+
+                </div>
+
+
+                <button
+                    class="btn primary"
+                    id="refreshPfz"
+                >
+                    ↻ Refresh PFZ
+                </button>
+
+            </div>
+
+
+            <div class="data-notice">
+
+                <span class="notice-icon">
+                    ⓘ
+                </span>
+
+                <div>
+
+                    <strong>
+                        Official PFZ data status
+                    </strong>
+
+                    <p id="pfzSourceNotice">
+                        Checking backend availability...
+                    </p>
+
+                </div>
+
+            </div>
+
+
+            <div class="metrics-grid">
+
+                <article class="metric-card">
+
+                    <div class="metric-header">
+                        PFZ Advisory
+                    </div>
+
+                    <div
+                        class="metric-value status-text"
+                        id="pfzAdvisory"
+                    >
+                        —
+                    </div>
+
+                    <div
+                        class="metric-meta"
+                        id="pfzAdvisoryMeta"
+                    >
+                        Data unavailable
+                    </div>
+
+                </article>
+
+
+                <article class="metric-card">
+
+                    <div class="metric-header">
+                        SST
+                    </div>
+
+                    <div
+                        class="metric-value"
+                        id="pfzSst"
+                    >
+                        —
+                    </div>
+
+                    <div class="metric-meta">
+                        Supporting parameter
+                    </div>
+
+                </article>
+
+
+                <article class="metric-card">
+
+                    <div class="metric-header">
+                        Chlorophyll
+                    </div>
+
+                    <div
+                        class="metric-value"
+                        id="pfzChlorophyll"
+                    >
+                        —
+                    </div>
+
+                    <div class="metric-meta">
+                        Supporting parameter
+                    </div>
+
+                </article>
+
+            </div>
+
+
+            <article class="panel">
+
+                <div class="panel-header">
+
+                    <div>
+
+                        <span class="panel-kicker">
+                            PFZ INFORMATION
+                        </span>
+
+                        <h3>
+                            Advisory Details
+                        </h3>
+
+                    </div>
+
+                </div>
+
+
+                <div
+                    class="data-details"
+                    id="pfzDetails"
+                >
+
+                    <div class="empty-state">
+
+                        <div class="empty-icon">
+                            ⌖
+                        </div>
+
+                        <h4>
+                            No PFZ information loaded
+                        </h4>
+
+                        <p>
+                            Official PFZ information will be
+                            displayed only when returned by the
+                            connected backend.
+                        </p>
+
+                    </div>
+
+                </div>
+
+            </article>
+
+        </section>
+
+
+        <!-- =================================
+             SATELLITE
+        ================================= -->
+        <section
+            class="page-section"
+            id="page-satellite"
+        >
+
+            <div class="page-intro">
+
+                <div>
+
+                    <span class="eyebrow">
+                        EARTH OBSERVATION
+                    </span>
+
+                    <h2>
+                        Satellite Intelligence
+                    </h2>
+
+                    <p>
+                        Satellite-derived marine information
+                        interface.
+                    </p>
+
+                </div>
+
+
+                <button
+                    class="btn primary"
+                    id="refreshSatellite"
+                >
+                    ↻ Refresh Satellite
+                </button>
+
+            </div>
+
+
+            <div class="data-notice">
+
+                <span class="notice-icon">
+                    ◌
+                </span>
+
+                <div>
+
+                    <strong>
+                        Satellite Backend Status
+                    </strong>
+
+                    <p id="satelliteMessage">
+                        Checking satellite backend...
+                    </p>
+
+                </div>
+
+            </div>
+
+
+            <div class="metrics-grid">
+
+                <article class="metric-card">
+
+                    <div class="metric-header">
+                        Satellite
+                    </div>
+
+                    <div
+                        class="metric-value"
+                        id="satelliteName"
+                    >
+                        —
+                    </div>
+
+                    <div class="metric-meta">
+                        Earth observation satellite
+                    </div>
+
+                </article>
+
+
+                <article class="metric-card">
+
+                    <div class="metric-header">
+                        Agency
+                    </div>
+
+                    <div
+                        class="metric-value"
+                        id="satelliteAgency"
+                    >
+                        —
+                    </div>
+
+                    <div class="metric-meta">
+                        Space agency
+                    </div>
+
+                </article>
+
+
+                <article class="metric-card">
+
+                    <div class="metric-header">
+                        Status
+                    </div>
+
+                    <div
+                        class="metric-value status-text"
+                        id="satelliteStatus"
+                    >
+                        —
+                    </div>
+
+                    <div class="metric-meta">
+                        Backend response
+                    </div>
+
+                </article>
+
+
+                <article class="metric-card">
+
+                    <div class="metric-header">
+                        Integration
+                    </div>
+
+                    <div
+                        class="metric-value status-text"
+                        id="satelliteIntegrationStatus"
+                    >
+                        —
+                    </div>
+
+                    <div class="metric-meta">
+                        Satellite integration
+                    </div>
+
+                </article>
+
+            </div>
+
+
+            <article class="panel">
+
+                <div class="panel-header">
+
+                    <div>
+
+                        <span class="panel-kicker">
+                            EARTH OBSERVATION
+                        </span>
+
+                        <h3>
+                            Satellite Information
+                        </h3>
+
+                    </div>
+
+                </div>
+
+
+                <div
+                    class="data-details"
+                    id="satelliteDetails"
+                >
+
+                    <div class="empty-state">
+
+                        <div class="empty-icon">
+                            ◌
+                        </div>
+
+                        <h4>
+                            Loading satellite information
+                        </h4>
+
+                        <p>
+                            ORCA is checking the connected
+                            satellite backend.
+                        </p>
+
+                    </div>
+
+                </div>
+
+            </article>
+
+
+            <article class="panel">
+
+                <div class="panel-header">
+
+                    <div>
+
+                        <span class="panel-kicker">
+                            AVAILABLE DATA
+                        </span>
+
+                        <h3>
+                            Satellite Data Types
+                        </h3>
+
+                    </div>
+
+                </div>
+
+
+                <div
+                    id="satelliteDataTypes"
+                    style="
+                        display:flex;
+                        flex-wrap:wrap;
+                        gap:10px;
+                    "
+                >
+                    —
+                </div>
+
+            </article>
+
+
+            <article class="panel">
+
+                <div class="panel-header">
+
+                    <div>
+
+                        <span class="panel-kicker">
+                            DATA PROVENANCE
+                        </span>
+
+                        <h3>
+                            Satellite Source
+                        </h3>
+
+                    </div>
+
+                </div>
+
+
+                <div class="data-details">
+
+                    <div class="data-detail-grid">
+
+                        <div class="data-detail-item">
+
+                            <span>
+                                Agent
+                            </span>
+
+                            <strong id="satelliteAgent">
+                                —
+                            </strong>
+
+                        </div>
+
+
+                        <div class="data-detail-item">
+
+                            <span>
+                                Source
+                            </span>
+
+                            <strong id="satelliteSource">
+                                —
+                            </strong>
+
+                        </div>
+
+                    </div>
+
+                </div>
+
+            </article>
+
+        </section>
+
+
+        <!-- =================================
+             MARINE SAFETY
+        ================================= -->
+        <section
+            class="page-section"
+            id="page-safety"
+        >
+
+            <div class="page-intro">
+
+                <div>
+
+                    <span class="eyebrow">
+                        SAFETY INTELLIGENCE
+                    </span>
+
+                    <h2>
+                        Marine Safety
+                    </h2>
+
+                    <p>
+                        View validated marine safety information
+                        returned by the connected backend.
+                    </p>
+
+                </div>
+
+
+                <button
+                    class="btn primary"
+                    id="refreshSafety"
+                >
+                    ↻ Refresh Safety
+                </button>
+
+            </div>
+
+
+            <div class="data-notice">
+
+                <span class="notice-icon">
+                    !
+                </span>
+
+                <div>
+
+                    <strong>
+                        Marine Safety Backend Status
+                    </strong>
+
+                    <p id="safetySourceNotice">
+                        Checking safety backend...
+                    </p>
+
+                </div>
+
+            </div>
+
+
+            <div class="metrics-grid">
+
+                <article class="metric-card">
+
+                    <div class="metric-header">
+                        Safety Status
+                    </div>
+
+                    <div
+                        class="metric-value status-text"
+                        id="safetyStatus"
+                    >
+                        —
+                    </div>
+
+                    <div
+                        class="metric-meta"
+                        id="safetyStatusMeta"
+                    >
+                        Backend response
+                    </div>
+
+                </article>
+
+
+                <article class="metric-card">
+
+                    <div class="metric-header">
+                        Alert Level
+                    </div>
+
+                    <div
+                        class="metric-value status-text"
+                        id="safetyAlertLevel"
+                    >
+                        —
+                    </div>
+
+                    <div class="metric-meta">
+                        Validated backend information
+                    </div>
+
+                </article>
+
+
+                <article class="metric-card">
+
+                    <div class="metric-header">
+                        Region
+                    </div>
+
+                    <div
+                        class="metric-value"
+                        id="safetyRegion"
+                    >
+                        —
+                    </div>
+
+                    <div class="metric-meta">
+                        Selected marine region
+                    </div>
+
+                </article>
+
+
+                <article class="metric-card">
+
+                    <div class="metric-header">
+                        Source
+                    </div>
+
+                    <div
+                        class="metric-value"
+                        id="safetySource"
+                    >
+                        —
+                    </div>
+
+                    <div class="metric-meta">
+                        Data provenance
+                    </div>
+
+                </article>
+
+            </div>
+
+
+            <article class="panel">
+
+                <div class="panel-header">
+
+                    <div>
+
+                        <span class="panel-kicker">
+                            SAFETY INFORMATION
+                        </span>
+
+                        <h3>
+                            Marine Safety Details
+                        </h3>
+
+                    </div>
+
+                </div>
+
+
+                <div
+                    class="data-details"
+                    id="safetyDetails"
+                >
+
+                    <div class="empty-state">
+
+                        <div class="empty-icon">
+                            !
+                        </div>
+
+                        <h4>
+                            Loading safety information
+                        </h4>
+
+                        <p>
+                            ORCA is checking the connected marine
+                            safety backend.
+                        </p>
+
+                    </div>
+
+                </div>
+
+            </article>
+
+
+            <div class="safety-disclaimer">
+
+                ORCA is a decision-support platform.
+                It does not create unsupported emergency warnings.
+                Always follow official marine advisories and
+                instructions from authorized authorities.
+
+            </div>
+
+        </section>
+
+
+        <!-- =================================
+             COLLABORATIVE AGENTS
+        ================================= -->
+        <section
+            class="page-section"
+            id="page-agents"
+        >
+
+            <div class="page-intro">
+
+                <div>
+
+                    <span class="eyebrow">
+                        MULTI-AGENT ARCHITECTURE
+                    </span>
+
+                    <h2>
+                        Collaborative Agents
+                    </h2>
+
+                    <p>
+                        ORCA's specialized-agent architecture for
+                        marine ecosystem reasoning.
+                    </p>
+
+                </div>
+
+            </div>
+
+
+            <div class="agent-grid">
+
+                <article class="agent-card">
+
+                    <div class="agent-number">01</div>
+
+                    <div class="agent-icon">🌊</div>
+
+                    <h3>
+                        Ocean Agent
+                    </h3>
+
+                    <p>
+                        Analyzes SST, waves, currents and ocean
+                        conditions.
+                    </p>
+
+                    <div class="agent-tasks">
+                        SST · Waves · Currents
+                    </div>
+
+                    <span class="agent-status">
+                        Integration Ready
+                    </span>
+
+                </article>
+
+
+                <article class="agent-card">
+
+                    <div class="agent-number">02</div>
+
+                    <div class="agent-icon">☁</div>
+
+                    <h3>
+                        Weather Agent
+                    </h3>
+
+                    <p>
+                        Handles weather, wind and storm-related
+                        information.
+                    </p>
+
+                    <div class="agent-tasks">
+                        Wind · Weather · Storms
+                    </div>
+
+                    <span class="agent-status">
+                        Integration Ready
+                    </span>
+
+                </article>
+
+
+                <article class="agent-card">
+
+                    <div class="agent-number">03</div>
+
+                    <div class="agent-icon">⌖</div>
+
+                    <h3>
+                        GIS Agent
+                    </h3>
+
+                    <p>
+                        Performs coordinate, location, distance
+                        and spatial reasoning.
+                    </p>
+
+                    <div class="agent-tasks">
+                        Coordinates · Distance · Spatial
+                    </div>
+
+                    <span class="agent-status">
+                        Integration Ready
+                    </span>
+
+                </article>
+
+
+                <article class="agent-card">
+
+                    <div class="agent-number">04</div>
+
+                    <div class="agent-icon">♒</div>
+
+                    <h3>
+                        Fishing Agent
+                    </h3>
+
+                    <p>
+                        Works with PFZ, chlorophyll and
+                        fishing-related information.
+                    </p>
+
+                    <div class="agent-tasks">
+                        PFZ · Chlorophyll · Fishing
+                    </div>
+
+                    <span class="agent-status">
+                        Integration Ready
+                    </span>
+
+                </article>
+
+
+                <article class="agent-card">
+
+                    <div class="agent-number">05</div>
+
+                    <div class="agent-icon">!</div>
+
+                    <h3>
+                        Safety Agent
+                    </h3>
+
+                    <p>
+                        Analyzes validated marine hazards and
+                        safety information.
+                    </p>
+
+                    <div class="agent-tasks">
+                        Hazards · Alerts · Risk
+                    </div>
+
+                    <span class="agent-status">
+                        Integration Ready
+                    </span>
+
+                </article>
+
+
+                <article class="agent-card coordinator">
+
+                    <div class="agent-number">06</div>
+
+                    <div class="agent-icon">◎</div>
+
+                    <h3>
+                        Coordinator / Planner
+                    </h3>
+
+                    <p>
+                        Coordinates specialized agents and combines
+                        validated outputs into an evidence-based
+                        response.
+                    </p>
+
+                    <div class="agent-tasks">
+                        Planning · Coordination · Evidence
+                    </div>
+
+                    <span class="agent-status">
+                        Integration Ready
+                    </span>
+
+                </article>
+
+            </div>
+
+        </section>
+
+
+        <!-- =================================
+             AI REASONING
+        ================================= -->
+        <section
+            class="page-section"
+            id="page-reasoning"
+        >
+
+            <div class="page-intro">
+
+                <div>
+
+                    <span class="eyebrow">
+                        EVIDENCE WORKFLOW
+                    </span>
+
+                    <h2>
+                        AI Reasoning
+                    </h2>
+
+                    <p>
+                        Structured view of the ORCA collaborative
+                        reasoning workflow.
+                    </p>
+
+                </div>
+
+            </div>
+
+
+            <article class="panel reasoning-panel">
+
+                <div class="reasoning-flow">
+
+                    <div class="reasoning-step">
+                        <span>01</span>
+                        <strong>User Question</strong>
+                    </div>
+
+                    <div class="flow-arrow">↓</div>
+
+                    <div class="reasoning-step">
+                        <span>02</span>
+                        <strong>Coordinator / Planner</strong>
+                    </div>
+
+                    <div class="flow-arrow">↓</div>
+
+                    <div class="reasoning-step">
+                        <span>03</span>
+                        <strong>Required Agent Selection</strong>
+                    </div>
+
+                    <div class="flow-arrow">↓</div>
+
+                    <div class="reasoning-step">
+                        <span>04</span>
+                        <strong>Data Retrieval</strong>
+                    </div>
+
+                    <div class="flow-arrow">↓</div>
+
+                    <div class="reasoning-step">
+                        <span>05</span>
+                        <strong>Data Validation</strong>
+                    </div>
+
+                    <div class="flow-arrow">↓</div>
+
+                    <div class="reasoning-step">
+                        <span>06</span>
+                        <strong>Specialized Agent Analysis</strong>
+                    </div>
+
+                    <div class="flow-arrow">↓</div>
+
+                    <div class="reasoning-step">
+                        <span>07</span>
+                        <strong>Collaborative Results</strong>
+                    </div>
+
+                    <div class="flow-arrow">↓</div>
+
+                    <div class="reasoning-step">
+                        <span>08</span>
+                        <strong>Evidence Collection</strong>
+                    </div>
+
+                    <div class="flow-arrow">↓</div>
+
+                    <div class="reasoning-step final">
+                        <span>09</span>
+                        <strong>Final Response</strong>
+                    </div>
+
+                </div>
+
+
+                <div class="reasoning-status">
+
+                    <span class="status-dot"></span>
+
+                    <div>
+                        <strong>
+                            Execution Status
+                        </strong>
+
+                        <p>
+                            Live reasoning connected to the ORCA backend.
+                        </p>
+                    </div>
+
+                </div>
+
+            </article>
+
+        </section>
+
+
+        <!-- =================================
+             DATA SOURCES
+        ================================= -->
+        <section
+            class="page-section"
+            id="page-sources"
+        >
+
+            <div class="page-intro">
+
+                <div>
+
+                    <span class="eyebrow">
+                        DATA PROVENANCE
+                    </span>
+
+                    <h2>
+                        Data Sources
+                    </h2>
+
+                    <p>
+                        Monitor the availability and provenance of
+                        connected marine information sources.
+                    </p>
+
+                </div>
+
+            </div>
+
+
+            <div class="source-grid">
+
+                <article class="source-card">
+
+                    <div class="source-icon">O</div>
+
+                    <div>
+
+                        <h3>
+                            INCOIS Ocean State Forecast
+                        </h3>
+
+                        <p>
+                            Oceanographic forecast information.
+                        </p>
+
+                        <span class="source-status">
+                            Connection not verified
+                        </span>
+
+                    </div>
+
+                </article>
+
+
+                <article class="source-card">
+
+                    <div class="source-icon">P</div>
+
+                    <div>
+
+                        <h3>
+                            INCOIS PFZ Advisory
+                        </h3>
+
+                        <p>
+                            Potential Fishing Zone advisory.
+                        </p>
+
+                        <span class="source-status">
+                            Backend dependent
+                        </span>
+
+                    </div>
+
+                </article>
+
+
+                <article class="source-card">
+
+                    <div class="source-icon">G</div>
+
+                    <div>
+
+                        <h3>
+                            INCOIS PFZ WebGIS
+                        </h3>
+
+                        <p>
+                            Geospatial PFZ information.
+                        </p>
+
+                        <span class="source-status">
+                            Integration required
+                        </span>
+
+                    </div>
+
+                </article>
+
+
+                <article class="source-card">
+
+                    <div class="source-icon">S</div>
+
+                    <div>
+
+                        <h3>
+                            Satellite / Earth Observation
+                        </h3>
+
+                        <p>
+                            Satellite-derived marine products.
+                        </p>
+
+                        <span class="source-status">
+                            Integration required
+                        </span>
+
+                    </div>
+
+                </article>
+
+            </div>
+
+        </section>
+
+
+        <!-- =================================
+             SETTINGS
+        ================================= -->
+        <section
+            class="page-section"
+            id="page-settings"
+        >
+
+            <div class="page-intro">
+
+                <div>
+
+                    <span class="eyebrow">
+                        SYSTEM CONFIGURATION
+                    </span>
+
+                    <h2>
+                        Settings
+                    </h2>
+
+                    <p>
+                        Configure ORCA frontend preferences.
+                    </p>
+
+                </div>
+
+            </div>
+
+
+            <div class="settings-grid">
+
+                <article class="panel settings-card">
+
+                    <h3>
+                        Data Refresh
+                    </h3>
+
+                    <p>
+                        Configure frontend refresh behaviour for
+                        supported endpoints.
+                    </p>
+
+                    <label class="toggle-row">
+
+                        <span>
+                            Automatic refresh
+                        </span>
+
+                        <input
+                            type="checkbox"
+                            id="autoRefreshToggle"
+                        >
+
+                    </label>
+
+                </article>
+
+
+                <article class="panel settings-card">
+
+                    <h3>
+                        Backend
+                    </h3>
+
+                    <p>
+                        Current FastAPI service.
+                    </p>
+
+                    <code>
+                        https://orca-backend-zb8o.onrender.com
+                    </code>
+
+                </article>
+
+
+                <article class="panel settings-card">
+
+                    <h3>
+                        Language
+                    </h3>
+
+                    <p>
+                        Select the interface language.
+                    </p>
+
+                    <select id="settingsLanguage">
+
+                        <option value="en">
+                            English
+                        </option>
+
+                        <option value="ta">
+                            தமிழ்
+                        </option>
+
+                    </select>
+
+                </article>
+
+            </div>
+
+        </section>
+
+
+    </div>
+
+
+    <!-- FOOTER -->
+    <footer class="app-footer">
+
+        <span>
+            ORCA Marine Intelligence
+        </span>
+
+        <span>
+            SIH 2026 • Decision Support Platform
+        </span>
+
+        <span>
+            Data status:
+            <strong id="footerStatus">
+                Checking
+            </strong>
+        </span>
+
+    </footer>
+
+</main>
+```
+
+</div>
+
+<!-- ================================
+     LEAFLET JS
+================================= -->
+
+<script
+    src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+></script>
+
+<!-- ================================
+     ORCA JAVASCRIPT
+================================= -->
+
+<script src="js/api.js"></script>
+
+<script src="js/language.js"></script>
+
+<script src="js/map.js"></script>
+
+<script src="js/dashboard.js"></script>
+
+<script src="js/pfz.js"></script>
+
+<script src="js/weather.js"></script>
+
+<script src="js/satellite.js"></script>
+
+<script src="js/safety.js"></script>
+
+<script src="js/agents.js"></script>
+
+<script src="js/assistant.js"></script>
+
+<script src="js/reasoning.js"></script>
+
+<script src="js/app.js"></script>
+
+</body>
+</html>
