@@ -4,3 +4,4 @@ xarray
 netCDF4
 psycopg2-binary
 requests
+beautifulsoup4
