@@ -336,3 +336,78 @@ def ask(
         state,
         district
     )
+
+
+# =========================================================
+# FORECAST HISTORY
+# =========================================================
+
+@app.get("/forecast-history")
+def forecast_history(
+    state: str = "Tamil Nadu"
+):
+
+    try:
+
+        from db_connection import get_connection
+
+        connection = get_connection()
+        cursor = connection.cursor()
+
+        cursor.execute("""
+            SELECT
+                forecast_time,
+                wind_speed_ms,
+                wave_height_m,
+                source
+            FROM wind_forecast
+            WHERE LOWER(region) = LOWER(%s)
+            ORDER BY forecast_time DESC
+            LIMIT 50
+        """, (state,))
+
+        rows = cursor.fetchall()
+
+        data = []
+
+        for row in rows:
+
+            data.append({
+                "forecast_time": (
+                    row[0].isoformat()
+                    if row[0]
+                    else None
+                ),
+
+                "wind_speed_ms": row[1],
+
+                "wave_height_m": row[2],
+
+                "source": row[3]
+            })
+
+        cursor.close()
+        connection.close()
+
+        return {
+            "status": "SUCCESS",
+            "state": state,
+            "count": len(data),
+            "data": data
+        }
+
+    except Exception as error:
+
+        print(
+            f"[ORCA] Forecast history error: {error}"
+        )
+
+        return {
+            "status": "ERROR",
+            "state": state,
+            "count": 0,
+            "data": [],
+            "message": (
+                "Forecast history could not be loaded."
+            )
+        }
