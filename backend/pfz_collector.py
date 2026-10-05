@@ -456,7 +456,7 @@ def save_pfz(results):
         cursor.execute(
             """
             INSERT INTO pfz_advisory (
-    valid_upto,
+                advisory_date,
                 valid_upto,
                 sector,
                 landing_centre,
