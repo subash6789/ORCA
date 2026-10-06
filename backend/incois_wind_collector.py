@@ -1,656 +1,606 @@
-import math
-from datetime import datetime, timezone
-from pathlib import Path
+"""
+ORCA REAL WIND + WAVE DATA PIPELINE
+INCOIS RSMC / WW3
 
+Purpose:
+- Find latest official INCOIS RSMC WW3 NetCDF
+- Download it with resumable download support
+- Extract real wind + wave data
+- Save data into PostgreSQL
+- Reuse already downloaded files
+"""
+
+import math
+import re
+import time
+from pathlib import Path
+from datetime import datetime, timezone
+
+import requests
 import xarray as xr
 
 from db_connection import get_connection
 
 
 # ============================================================
-# ORCA - INCOIS REAL WIND + WAVE FORECAST COLLECTOR
+# CONFIGURATION
 # ============================================================
 
-BACKEND_DIR = Path(
-    "C:/ORCA_ALL_FILES/backend"
+INCOIS_DOWNLOAD_PAGE = (
+    "https://incois.gov.in/oceanservices/rsmc_download.jsp"
+)
+
+INCOIS_FILE_BASE = (
+    "https://incois.gov.in/thredds/fileServer/osf/ww3/"
+)
+
+BACKEND_DIR = Path(__file__).resolve().parent
+
+DOWNLOAD_DIR = (
+    BACKEND_DIR / "rsmc_ww3_downloads"
+)
+
+DOWNLOAD_DIR.mkdir(
+    parents=True,
+    exist_ok=True
 )
 
 
 # ============================================================
-# FIND NEWEST LOCAL INCOIS WW3 FILE
-# ============================================================
-
-def find_latest_nc_file():
-
-    files = list(
-        BACKEND_DIR.glob(
-            "rsmc_combined_ww3_*.nc"
-        )
-    )
-
-    if not files:
-
-        print(
-            "ERROR: No INCOIS WW3 NetCDF file found."
-        )
-
-        print(
-            "Expected file pattern:"
-        )
-
-        print(
-            "rsmc_combined_ww3_YYYYMMDD.nc"
-        )
-
-        return None
-
-    # --------------------------------------------------------
-    # Sort using filename date
-    # --------------------------------------------------------
-
-    files.sort(
-        key=lambda file: file.name,
-        reverse=True
-    )
-
-    latest_file = files[0]
-
-    print(
-        "Latest local INCOIS WW3 file:"
-    )
-
-    print(
-        latest_file.name
-    )
-
-    return latest_file
-
-
-# ============================================================
-# ORCA SUPPORTED REGIONS
+# REGION CONFIGURATION
 # ============================================================
 
 REGIONS = {
 
     "Tamil Nadu": {
-
-        "region":
-            "Tamil Nadu / Bay of Bengal",
-
-        "lat":
-            13.0827,
-
-        "lon":
-            80.2707
+        "region": "Tamil Nadu / Bay of Bengal",
+        "latitude": 13.0827,
+        "longitude": 80.2707,
     },
-
 
     "Kerala": {
-
-        "region":
-            "Kerala / Arabian Sea",
-
-        "lat":
-            8.5241,
-
-        "lon":
-            76.9366
+        "region": "Kerala / Arabian Sea",
+        "latitude": 8.5241,
+        "longitude": 76.9366,
     },
-
 
     "Karnataka": {
-
-        "region":
-            "Karnataka / Arabian Sea",
-
-        "lat":
-            12.9141,
-
-        "lon":
-            74.8560
+        "region": "Karnataka / Arabian Sea",
+        "latitude": 12.9141,
+        "longitude": 74.8560,
     },
 
-
     "Gujarat": {
-
-        "region":
-            "Gujarat / Arabian Sea",
-
-        "lat":
-            23.0225,
-
-        "lon":
-            72.5714
-    }
-
+        "region": "Gujarat / Arabian Sea",
+        "latitude": 23.0225,
+        "longitude": 72.5714,
+    },
 }
 
 
 # ============================================================
-# WIND SPEED CALCULATION
-# ============================================================
-
-def calculate_wind_speed(
-    u,
-    v
-):
-
-    if u is None or v is None:
-
-        return None
-
-    try:
-
-        u = float(u)
-        v = float(v)
-
-    except (
-        TypeError,
-        ValueError
-    ):
-
-        return None
-
-    if (
-        math.isnan(u)
-        or math.isnan(v)
-    ):
-
-        return None
-
-    return math.sqrt(
-        u ** 2 +
-        v ** 2
-    )
-
-
-# ============================================================
-# CREATE / UPDATE DATABASE TABLE
+# DATABASE TABLE
 # ============================================================
 
 def create_wind_forecast_table():
 
     connection = get_connection()
 
-    try:
+    cursor = connection.cursor()
 
-        cursor = connection.cursor()
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS wind_forecast (
 
-        cursor.execute(
-            """
-            CREATE TABLE IF NOT EXISTS wind_forecast (
+            id SERIAL PRIMARY KEY,
 
-                id SERIAL PRIMARY KEY,
+            forecast_time TIMESTAMP NOT NULL,
 
-                forecast_time TIMESTAMP NOT NULL,
+            region VARCHAR(100) NOT NULL,
 
-                region VARCHAR(100) NOT NULL,
+            latitude DOUBLE PRECISION,
 
-                latitude DOUBLE PRECISION,
+            longitude DOUBLE PRECISION,
 
-                longitude DOUBLE PRECISION,
+            wind_speed_ms DOUBLE PRECISION,
 
-                wind_speed_ms DOUBLE PRECISION,
+            u_wind_ms DOUBLE PRECISION,
 
-                u_wind_ms DOUBLE PRECISION,
+            v_wind_ms DOUBLE PRECISION,
 
-                v_wind_ms DOUBLE PRECISION,
+            wave_height_m DOUBLE PRECISION,
 
-                wave_height_m DOUBLE PRECISION,
+            source VARCHAR(200),
 
-                source VARCHAR(200),
+            data_status VARCHAR(50),
 
-                data_status VARCHAR(50),
+            retrieved_at TIMESTAMP NOT NULL,
 
-                retrieved_at TIMESTAMP NOT NULL,
+            UNIQUE (region, forecast_time)
+        )
+        """
+    )
 
-                UNIQUE (
-                    region,
-                    forecast_time
-                )
+    connection.commit()
+
+    cursor.close()
+    connection.close()
+
+    print("Wind + wave forecast table: READY")
+
+
+# ============================================================
+# FIND LATEST OFFICIAL INCOIS FILE
+# ============================================================
+
+def find_latest_incois_file():
+
+    print()
+    print("Checking official INCOIS RSMC WW3 source...")
+    print(INCOIS_DOWNLOAD_PAGE)
+
+    response = requests.get(
+        INCOIS_DOWNLOAD_PAGE,
+        timeout=(20, 60),
+        headers={
+            "User-Agent": (
+                "Mozilla/5.0 ORCA Marine Intelligence"
             )
-            """
+        }
+    )
+
+    response.raise_for_status()
+
+    html = response.text
+
+    pattern = (
+        r"rsmc_combined_ww3_(\d{8})\.nc"
+    )
+
+    matches = re.findall(
+        pattern,
+        html,
+        flags=re.IGNORECASE
+    )
+
+    if not matches:
+
+        raise RuntimeError(
+            "No INCOIS RSMC WW3 NetCDF file "
+            "was found on the official page."
         )
 
+    latest_date = max(matches)
 
-        cursor.execute(
-            """
-            ALTER TABLE wind_forecast
+    filename = (
+        f"rsmc_combined_ww3_{latest_date}.nc"
+    )
 
-            ADD COLUMN IF NOT EXISTS
-            wave_height_m
-            DOUBLE PRECISION
-            """
+    print()
+    print("Latest INCOIS WW3 file:")
+    print(filename)
+
+    return filename
+
+
+# ============================================================
+# RESUMABLE DOWNLOAD
+# ============================================================
+
+def download_file_resumable(
+    url,
+    destination
+):
+
+    temp_file = destination.with_suffix(
+        destination.suffix + ".part"
+    )
+
+    existing_size = 0
+
+    if temp_file.exists():
+
+        existing_size = (
+            temp_file.stat().st_size
         )
 
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 ORCA Marine Intelligence"
+        )
+    }
 
-        connection.commit()
+    if existing_size > 0:
 
-        cursor.close()
+        headers["Range"] = (
+            f"bytes={existing_size}-"
+        )
+
+        print()
+        print(
+            "Resuming download from "
+            f"{existing_size / 1048576:.2f} MB"
+        )
+
+    else:
+
+        print()
+        print("Starting new download...")
+
+    response = requests.get(
+        url,
+        headers=headers,
+        stream=True,
+        timeout=(30, 120),
+    )
+
+    # --------------------------------------------------------
+    # RANGE NOT SUPPORTED
+    # --------------------------------------------------------
+
+    if (
+        existing_size > 0
+        and response.status_code == 200
+    ):
+
+        print()
+        print(
+            "Server did not provide HTTP range support."
+        )
 
         print(
-            "Wind + wave forecast table: READY"
+            "Restarting download from beginning..."
         )
+
+        existing_size = 0
+
+        if temp_file.exists():
+            temp_file.unlink()
+
+        response.close()
+
+        response = requests.get(
+            url,
+            headers={
+                "User-Agent": (
+                    "Mozilla/5.0 ORCA Marine Intelligence"
+                )
+            },
+            stream=True,
+            timeout=(30, 120),
+        )
+
+    response.raise_for_status()
+
+    total_size = response.headers.get(
+        "Content-Length"
+    )
+
+    if total_size:
+
+        total_size = int(total_size)
+
+        if existing_size > 0:
+            total_size += existing_size
+
+    mode = (
+        "ab"
+        if existing_size > 0
+        else "wb"
+    )
+
+    downloaded = existing_size
+
+    start_time = time.time()
+
+    last_print = 0
+
+    try:
+
+        with open(
+            temp_file,
+            mode
+        ) as file:
+
+            for chunk in response.iter_content(
+                chunk_size=256 * 1024
+            ):
+
+                if not chunk:
+                    continue
+
+                file.write(chunk)
+
+                downloaded += len(chunk)
+
+                now = time.time()
+
+                if now - last_print >= 2:
+
+                    elapsed = max(
+                        now - start_time,
+                        0.1
+                    )
+
+                    speed = (
+                        downloaded - existing_size
+                    ) / elapsed
+
+                    if total_size:
+
+                        percent = (
+                            downloaded /
+                            total_size
+                        ) * 100
+
+                        print(
+                            f"\rDownload: "
+                            f"{percent:6.2f}% | "
+                            f"{downloaded / 1048576:.1f} MB | "
+                            f"{speed / 1048576:.2f} MB/s",
+                            end="",
+                            flush=True
+                        )
+
+                    else:
+
+                        print(
+                            f"\rDownloaded: "
+                            f"{downloaded / 1048576:.1f} MB | "
+                            f"{speed / 1048576:.2f} MB/s",
+                            end="",
+                            flush=True
+                        )
+
+                    last_print = now
+
+    except (
+        requests.exceptions.Timeout,
+        requests.exceptions.ConnectionError,
+    ) as error:
+
+        print()
+        print(
+            "Download interrupted."
+        )
+
+        print(
+            "Partial file preserved:"
+        )
+
+        print(temp_file)
+
+        raise error
 
     finally:
 
-        connection.close()
+        response.close()
+
+    print()
+
+    temp_file.replace(destination)
+
+    print()
+    print("Download completed:")
+    print(destination)
+
+    return destination
 
 
 # ============================================================
-# FIND LATEST VALID FORECAST TIME
+# DOWNLOAD LATEST WW3 FILE
 # ============================================================
 
-def find_latest_forecast_index(
-    dataset
-):
+def download_latest_nc_file():
 
-    try:
+    filename = find_latest_incois_file()
 
-        time_values = (
-            dataset["TIME"].values
+    destination = (
+        DOWNLOAD_DIR / filename
+    )
+
+    # --------------------------------------------------------
+    # IMPORTANT:
+    # REUSE ALREADY DOWNLOADED FILE
+    # --------------------------------------------------------
+
+    if destination.exists():
+
+        size_mb = (
+            destination.stat().st_size
+            / 1048576
         )
 
-        if len(time_values) == 0:
-
-            return None
-
-        # ----------------------------------------------------
-        # The NetCDF forecast normally contains multiple
-        # forecast times.
-        #
-        # We use the latest available forecast time.
-        # ----------------------------------------------------
-
-        latest_index = (
-            len(time_values) - 1
-        )
-
-        latest_time = (
-            time_values[latest_index]
+        print()
+        print(
+            "WW3 file already downloaded."
         )
 
         print(
-            "Forecast time selected:"
+            f"Existing file size: "
+            f"{size_mb:.2f} MB"
         )
 
         print(
-            latest_time
+            "Reusing existing file."
         )
 
-        return latest_index
+        print(destination)
 
-    except Exception as error:
+        return destination
 
-        print(
-            "ERROR reading forecast times:"
-        )
+    url = (
+        INCOIS_FILE_BASE + filename
+    )
 
-        print(
-            error
-        )
+    print()
+    print(
+        "Downloading official INCOIS WW3 file..."
+    )
 
-        return None
+    print(url)
+
+    return download_file_resumable(
+        url,
+        destination
+    )
 
 
 # ============================================================
-# FIND VALID WIND + WAVE CELL
+# FIND DATASET VARIABLE
 # ============================================================
 
-def find_valid_forecast_cell(
+def find_variable(
     dataset,
-    target_lat,
-    target_lon,
-    time_index,
-    max_radius=20
+    possible_names
 ):
 
-    lat_values = (
-        dataset["IOYAXIS"].values
-    )
+    available = {
+        name.lower(): name
+        for name in dataset.variables
+    }
 
-    lon_values = (
-        dataset["IOXAXIS"].values
-    )
+    for candidate in possible_names:
 
+        if candidate.lower() in available:
 
-    # --------------------------------------------------------
-    # Find nearest grid index
-    # --------------------------------------------------------
-
-    lat_index = int(
-        abs(
-            lat_values -
-            target_lat
-        ).argmin()
-    )
-
-
-    lon_index = int(
-        abs(
-            lon_values -
-            target_lon
-        ).argmin()
-    )
-
-
-    # --------------------------------------------------------
-    # Read nearest cell
-    # --------------------------------------------------------
-
-    try:
-
-        nearest_u = float(
-            dataset["UWND"]
-            .isel(
-                TIME=time_index,
-                IOYAXIS=lat_index,
-                IOXAXIS=lon_index
-            )
-            .item()
-        )
-
-
-        nearest_v = float(
-            dataset["VWND"]
-            .isel(
-                TIME=time_index,
-                IOYAXIS=lat_index,
-                IOXAXIS=lon_index
-            )
-            .item()
-        )
-
-
-        nearest_wave = float(
-            dataset["HS"]
-            .isel(
-                TIME=time_index,
-                IOYAXIS=lat_index,
-                IOXAXIS=lon_index
-            )
-            .item()
-        )
-
-
-        if (
-
-            not math.isnan(
-                nearest_u
-            )
-
-            and
-
-            not math.isnan(
-                nearest_v
-            )
-
-            and
-
-            not math.isnan(
-                nearest_wave
-            )
-
-        ):
-
-            return {
-
-                "u":
-                    nearest_u,
-
-                "v":
-                    nearest_v,
-
-                "wave_height":
-                    nearest_wave,
-
-                "lat":
-                    float(
-                        lat_values[
-                            lat_index
-                        ]
-                    ),
-
-                "lon":
-                    float(
-                        lon_values[
-                            lon_index
-                        ]
-                    )
-            }
-
-
-    except Exception:
-
-        pass
-
-
-    # --------------------------------------------------------
-    # Search surrounding cells
-    # --------------------------------------------------------
-
-    best_cell = None
-
-    best_distance = None
-
-
-    for radius in range(
-        1,
-        max_radius + 1
-    ):
-
-
-        lat_start = max(
-            0,
-            lat_index - radius
-        )
-
-
-        lat_end = min(
-            len(lat_values),
-            lat_index +
-            radius +
-            1
-        )
-
-
-        lon_start = max(
-            0,
-            lon_index - radius
-        )
-
-
-        lon_end = min(
-            len(lon_values),
-            lon_index +
-            radius +
-            1
-        )
-
-
-        area_u = (
-            dataset["UWND"]
-            .isel(
-                TIME=time_index,
-                IOYAXIS=slice(
-                    lat_start,
-                    lat_end
-                ),
-                IOXAXIS=slice(
-                    lon_start,
-                    lon_end
-                )
-            )
-        )
-
-
-        area_v = (
-            dataset["VWND"]
-            .isel(
-                TIME=time_index,
-                IOYAXIS=slice(
-                    lat_start,
-                    lat_end
-                ),
-                IOXAXIS=slice(
-                    lon_start,
-                    lon_end
-                )
-            )
-        )
-
-
-        area_wave = (
-            dataset["HS"]
-            .isel(
-                TIME=time_index,
-                IOYAXIS=slice(
-                    lat_start,
-                    lat_end
-                ),
-                IOXAXIS=slice(
-                    lon_start,
-                    lon_end
-                )
-            )
-        )
-
-
-        u_values = area_u.values
-
-        v_values = area_v.values
-
-        wave_values = area_wave.values
-
-
-        for i in range(
-            u_values.shape[0]
-        ):
-
-            for j in range(
-                u_values.shape[1]
-            ):
-
-
-                try:
-
-                    test_u = float(
-                        u_values[i, j]
-                    )
-
-                    test_v = float(
-                        v_values[i, j]
-                    )
-
-                    test_wave = float(
-                        wave_values[i, j]
-                    )
-
-                except (
-                    TypeError,
-                    ValueError
-                ):
-
-                    continue
-
-
-                if (
-
-                    math.isnan(test_u)
-
-                    or
-
-                    math.isnan(test_v)
-
-                    or
-
-                    math.isnan(test_wave)
-
-                ):
-
-                    continue
-
-
-                actual_lat = float(
-                    lat_values[
-                        lat_start + i
-                    ]
-                )
-
-
-                actual_lon = float(
-                    lon_values[
-                        lon_start + j
-                    ]
-                )
-
-
-                distance = (
-
-                    (
-                        actual_lat -
-                        target_lat
-                    ) ** 2
-
-                    +
-
-                    (
-                        actual_lon -
-                        target_lon
-                    ) ** 2
-                )
-
-
-                if (
-
-                    best_distance is None
-
-                    or
-
-                    distance <
-                    best_distance
-
-                ):
-
-                    best_distance = (
-                        distance
-                    )
-
-
-                    best_cell = {
-
-                        "u":
-                            test_u,
-
-                        "v":
-                            test_v,
-
-                        "wave_height":
-                            test_wave,
-
-                        "lat":
-                            actual_lat,
-
-                        "lon":
-                            actual_lon
-                    }
-
-
-        if best_cell is not None:
-
-            return best_cell
-
+            return available[
+                candidate.lower()
+            ]
 
     return None
 
 
 # ============================================================
-# COLLECT REAL INCOIS WIND + WAVE DATA
+# CONVERT NUMPY DATETIME64
+# ============================================================
+
+def convert_numpy_datetime(value):
+
+    if value is None:
+        return None
+
+    try:
+
+        # Convert numpy.datetime64
+        converted = (
+            value
+            .astype("datetime64[us]")
+            .astype(datetime)
+        )
+
+        return converted
+
+    except Exception:
+
+        # Fallback
+        try:
+
+            return datetime.fromisoformat(
+                str(value).replace(
+                    "Z",
+                    ""
+                )
+            )
+
+        except Exception:
+
+            return None
+
+
+# ============================================================
+# CLEAN NUMERIC VALUES
+# ============================================================
+
+def clean_numeric(value):
+
+    if value is None:
+        return None
+
+    try:
+
+        value = float(value)
+
+        if math.isnan(value):
+            return None
+
+        if math.isinf(value):
+            return None
+
+        return value
+
+    except (
+        TypeError,
+        ValueError,
+    ):
+
+        return None
+
+
+# ============================================================
+# NEAREST GRID VALUE
+# ============================================================
+
+def nearest_value(
+    data_array,
+    latitude,
+    longitude,
+    lat_name,
+    lon_name,
+):
+
+    try:
+
+        selected = data_array.sel(
+            {
+                lat_name: latitude,
+                lon_name: longitude,
+            },
+            method="nearest",
+        )
+
+        value = selected.values
+
+        if hasattr(value, "item"):
+            value = value.item()
+
+        return clean_numeric(value)
+
+    except Exception:
+
+        return None
+
+
+# ============================================================
+# GET LATEST TIME
+# ============================================================
+
+def get_latest_time(
+    dataset,
+    time_name
+):
+
+    times = dataset[
+        time_name
+    ].values
+
+    if len(times) == 0:
+
+        return None
+
+    return times[-1]
+
+
+# ============================================================
+# COLLECT WIND + WAVE DATA
 # ============================================================
 
 def collect_wind_data():
 
     print()
+    print(
+        "-----------------------------------------"
+    )
 
     print(
         "ORCA - REAL INCOIS WIND + WAVE COLLECTOR"
@@ -670,380 +620,407 @@ def collect_wind_data():
 
     print()
 
-
     # --------------------------------------------------------
-    # Find newest local file
+    # DOWNLOAD / REUSE FILE
     # --------------------------------------------------------
 
     nc_file = (
-        find_latest_nc_file()
+        download_latest_nc_file()
     )
 
+    print()
+    print(
+        "Opening WW3 NetCDF..."
+    )
 
-    if nc_file is None:
-
-        return []
-
+    print(nc_file)
 
     # --------------------------------------------------------
-    # Open NetCDF
+    # OPEN DATASET
     # --------------------------------------------------------
 
-    try:
+    dataset = xr.open_dataset(
+        nc_file
+    )
 
-      dataset = xr.open_dataset(
-    nc_file,
-    decode_times=True,
-    use_cftime=True
-)
+    print()
+    print(
+        "Dataset opened successfully."
+    )
 
-    except Exception as error:
+    # --------------------------------------------------------
+    # FIND VARIABLES
+    # --------------------------------------------------------
 
-        print(
-            "ERROR: Unable to open INCOIS "
-            "forecast file."
+    time_name = find_variable(
+        dataset,
+        [
+            "TIME",
+            "time",
+            "forecast_time",
+        ]
+    )
+
+    lat_name = find_variable(
+        dataset,
+        [
+            "IOYAXIS",
+            "latitude",
+            "lat",
+            "LAT",
+        ]
+    )
+
+    lon_name = find_variable(
+        dataset,
+        [
+            "IOXAXIS",
+            "longitude",
+            "lon",
+            "LON",
+        ]
+    )
+
+    u_name = find_variable(
+        dataset,
+        [
+            "UWND",
+            "u10",
+            "wind_u",
+        ]
+    )
+
+    v_name = find_variable(
+        dataset,
+        [
+            "VWND",
+            "v10",
+            "wind_v",
+        ]
+    )
+
+    wave_name = find_variable(
+        dataset,
+        [
+            "HS",
+            "hs",
+            "significant_wave_height",
+            "wave_height",
+        ]
+    )
+
+    print()
+    print(
+        "Detected variables:"
+    )
+
+    print(
+        "TIME:",
+        time_name
+    )
+
+    print(
+        "LAT :",
+        lat_name
+    )
+
+    print(
+        "LON :",
+        lon_name
+    )
+
+    print(
+        "UWND:",
+        u_name
+    )
+
+    print(
+        "VWND:",
+        v_name
+    )
+
+    print(
+        "HS  :",
+        wave_name
+    )
+
+    if not time_name:
+
+        raise RuntimeError(
+            "TIME variable not found."
         )
 
-        print(
-            "Reason:",
-            error
+    if not lat_name:
+
+        raise RuntimeError(
+            "Latitude variable not found."
         )
 
-        return []
+    if not lon_name:
 
+        raise RuntimeError(
+            "Longitude variable not found."
+        )
+
+    # --------------------------------------------------------
+    # GET LATEST FORECAST TIME
+    # --------------------------------------------------------
+
+    latest_time = get_latest_time(
+        dataset,
+        time_name
+    )
+
+    print()
+    print(
+        "Raw forecast time:"
+    )
+
+    print(latest_time)
+
+    # --------------------------------------------------------
+    # FIX:
+    # numpy.datetime64 -> Python datetime
+    # --------------------------------------------------------
+
+    latest_time = (
+        convert_numpy_datetime(
+            latest_time
+        )
+    )
+
+    print()
+    print(
+        "Converted forecast time:"
+    )
+
+    print(latest_time)
+
+    if latest_time is None:
+
+        raise RuntimeError(
+            "Could not convert forecast time."
+        )
+
+    # --------------------------------------------------------
+    # UTC RETRIEVAL TIME
+    # --------------------------------------------------------
+
+    retrieved_at = datetime.now(
+        timezone.utc
+    ).replace(
+        tzinfo=None
+    )
 
     results = []
 
+    # --------------------------------------------------------
+    # PROCESS STATES
+    # --------------------------------------------------------
 
-    try:
+    for state, config in REGIONS.items():
 
-        # ----------------------------------------------------
-        # Required variables
-        # ----------------------------------------------------
-
-        required_variables = [
-
-            "UWND",
-
-            "VWND",
-
-            "HS",
-
-            "TIME"
-
-        ]
-
-
-        for variable in (
-            required_variables
-        ):
-
-            if variable not in dataset:
-
-                print(
-                    f"ERROR: Required variable "
-                    f"{variable} not found."
-                )
-
-                return []
-
-
-        # ----------------------------------------------------
-        # Select latest forecast time
-        # ----------------------------------------------------
-
-        time_index = (
-            find_latest_forecast_index(
-                dataset
-            )
+        latitude = (
+            config["latitude"]
         )
 
-
-        if time_index is None:
-
-            print(
-                "ERROR: No forecast time available."
-            )
-
-            return []
-
-
-        time_value = (
-            dataset["TIME"]
-            .isel(
-                TIME=time_index
-            )
-            .item()
-        )
-
-
-        print()
-
-        print(
-            "Using forecast timestamp:"
-        )
-
-        print(
-            time_value
+        longitude = (
+            config["longitude"]
         )
 
         print()
+        print(
+            f"Processing {state}..."
+        )
 
+        wind_speed = None
+
+        u_wind = None
+
+        v_wind = None
+
+        wave_height = None
 
         # ----------------------------------------------------
-        # Process every ORCA region
+        # U WIND
         # ----------------------------------------------------
 
-        for state, info in (
-            REGIONS.items()
+        if u_name:
+
+            u_data = dataset[
+                u_name
+            ].isel(
+                {
+                    time_name: -1
+                }
+            )
+
+            u_wind = nearest_value(
+                u_data,
+                latitude,
+                longitude,
+                lat_name,
+                lon_name,
+            )
+
+        # ----------------------------------------------------
+        # V WIND
+        # ----------------------------------------------------
+
+        if v_name:
+
+            v_data = dataset[
+                v_name
+            ].isel(
+                {
+                    time_name: -1
+                }
+            )
+
+            v_wind = nearest_value(
+                v_data,
+                latitude,
+                longitude,
+                lat_name,
+                lon_name,
+            )
+
+        # ----------------------------------------------------
+        # WIND SPEED
+        # ----------------------------------------------------
+
+        if (
+            u_wind is not None
+            and
+            v_wind is not None
         ):
 
-
-            print(
-                f"Processing {state}..."
-            )
-
-
-            forecast_cell = (
-                find_valid_forecast_cell(
-
-                    dataset,
-
-                    info["lat"],
-
-                    info["lon"],
-
-                    time_index
-
+            wind_speed = math.sqrt(
+                (
+                    u_wind ** 2
+                )
+                +
+                (
+                    v_wind ** 2
                 )
             )
-
-
-            if forecast_cell is None:
-
-                print(
-                    f"{state}: "
-                    "Wind/wave data unavailable"
-                )
-
-                print()
-
-                continue
-
-
-            u_value = (
-                forecast_cell["u"]
-            )
-
-
-            v_value = (
-                forecast_cell["v"]
-            )
-
-
-            wave_height = (
-                forecast_cell[
-                    "wave_height"
-                ]
-            )
-
-
-            actual_lat = (
-                forecast_cell["lat"]
-            )
-
-
-            actual_lon = (
-                forecast_cell["lon"]
-            )
-
-
-            # ------------------------------------------------
-            # Calculate wind speed
-            # ------------------------------------------------
 
             wind_speed = (
-                calculate_wind_speed(
-                    u_value,
-                    v_value
+                clean_numeric(
+                    wind_speed
                 )
             )
 
+        # ----------------------------------------------------
+        # WAVE HEIGHT
+        # ----------------------------------------------------
 
-            if wind_speed is None:
+        if wave_name:
 
-                print(
-                    f"{state}: "
-                    "Wind data unavailable"
-                )
-
-                print()
-
-                continue
-
-
-            # ------------------------------------------------
-            # Validate wave
-            # ------------------------------------------------
-
-            if (
-
-                wave_height is None
-
-                or
-
-                math.isnan(
-                    wave_height
-                )
-
-            ):
-
-                print(
-                    f"{state}: "
-                    "Wave height unavailable"
-                )
-
-                wave_height = None
-
-
-            # ------------------------------------------------
-            # Retrieved timestamp
-            # ------------------------------------------------
-
-            retrieved_at = (
-                datetime.now(
-                    timezone.utc
-                )
+            wave_data = dataset[
+                wave_name
+            ].isel(
+                {
+                    time_name: -1
+                }
             )
 
-
-            # ------------------------------------------------
-            # Build result
-            # ------------------------------------------------
-
-            result = {
-
-                "state":
-                    state,
-
-                "region":
-                    info["region"],
-
-                "latitude":
-                    actual_lat,
-
-                "longitude":
-                    actual_lon,
-
-                "wind_speed_ms":
-                    round(
-                        wind_speed,
-                        3
-                    ),
-
-                "u_wind_ms":
-                    round(
-                        u_value,
-                        3
-                    ),
-
-                "v_wind_ms":
-                    round(
-                        v_value,
-                        3
-                    ),
-
-                "wave_height_m":
-
-                    (
-                        round(
-                            wave_height,
-                            3
-                        )
-
-                        if
-                        wave_height is not None
-
-                        else
-                        None
-                    ),
-
-                "forecast_time":
-                    str(
-                        time_value
-                    ),
-
-                "retrieved_at":
-                    retrieved_at
-
-            }
-
-
-            results.append(
-                result
+            wave_height = nearest_value(
+                wave_data,
+                latitude,
+                longitude,
+                lat_name,
+                lon_name,
             )
 
+        # ----------------------------------------------------
+        # RESULT
+        # ----------------------------------------------------
 
-            # ------------------------------------------------
-            # Display result
-            # ------------------------------------------------
+        result = {
 
-            print(
-                f"{state}: "
-                f"Wind "
-                f"{result['wind_speed_ms']} m/s"
-            )
+            "state": state,
 
+            "region": (
+                config["region"]
+            ),
 
-            print(
-                f"  U Wind: "
-                f"{result['u_wind_ms']} m/s"
-            )
+            "forecast_time": (
+                latest_time
+            ),
 
+            "latitude": latitude,
 
-            print(
-                f"  V Wind: "
-                f"{result['v_wind_ms']} m/s"
-            )
+            "longitude": longitude,
 
+            "wind_speed_ms": (
+                wind_speed
+            ),
 
-            print(
-                f"  Wave Height: "
-                f"{result['wave_height_m']} m"
-            )
+            "u_wind_ms": (
+                u_wind
+            ),
 
+            "v_wind_ms": (
+                v_wind
+            ),
 
-            print(
-                f"  Grid Latitude: "
-                f"{result['latitude']}"
-            )
+            "wave_height_m": (
+                wave_height
+            ),
 
+            "source": (
+                "INCOIS RSMC / WW3"
+            ),
 
-            print(
-                f"  Grid Longitude: "
-                f"{result['longitude']}"
-            )
+            "data_status": (
+                "FORECAST"
+            ),
 
+            "retrieved_at": (
+                retrieved_at
+            ),
+        }
 
-            print(
-                f"  Forecast: "
-                f"{result['forecast_time']}"
-            )
+        results.append(
+            result
+        )
 
+        print(
+            f"  Wind speed : "
+            f"{wind_speed}"
+        )
 
-            print()
+        print(
+            f"  Wave height: "
+            f"{wave_height}"
+        )
 
+    # --------------------------------------------------------
+    # CLOSE DATASET
+    # --------------------------------------------------------
 
-    finally:
+    dataset.close()
 
-        dataset.close()
+    print()
+    print(
+        f"Collected "
+        f"{len(results)} regional records."
+    )
 
+    # --------------------------------------------------------
+    # SAVE
+    # --------------------------------------------------------
+
+    save_wind_data(
+        results
+    )
 
     return results
 
 
 # ============================================================
-# SAVE WIND + WAVE DATA TO POSTGRESQL
+# SAVE TO DATABASE
 # ============================================================
 
 def save_wind_data(
@@ -1053,169 +1030,193 @@ def save_wind_data(
     if not results:
 
         print(
-            "No wind/wave results available "
-            "for database update."
+            "No wind/wave data to save."
         )
 
         return
-
 
     connection = (
         get_connection()
     )
 
+    cursor = (
+        connection.cursor()
+    )
 
-    try:
+    inserted = 0
 
-        cursor = (
-            connection.cursor()
-        )
+    updated = 0
 
+    for row in results:
 
-        for result in results:
+        cursor.execute(
+            """
+            INSERT INTO wind_forecast (
 
-            cursor.execute(
+                forecast_time,
 
-                """
-                INSERT INTO wind_forecast
-                (
-                    forecast_time,
-                    region,
-                    latitude,
-                    longitude,
-                    wind_speed_ms,
-                    u_wind_ms,
-                    v_wind_ms,
-                    wave_height_m,
-                    source,
-                    data_status,
-                    retrieved_at
-                )
+                region,
 
-                VALUES
-                (
-                    %s,
-                    %s,
-                    %s,
-                    %s,
-                    %s,
-                    %s,
-                    %s,
-                    %s,
-                    %s,
-                    %s,
-                    %s
-                )
+                latitude,
 
-                ON CONFLICT
-                (
-                    region,
-                    forecast_time
-                )
+                longitude,
 
-                DO UPDATE SET
+                wind_speed_ms,
 
-                    latitude =
-                        EXCLUDED.latitude,
+                u_wind_ms,
 
-                    longitude =
-                        EXCLUDED.longitude,
+                v_wind_ms,
 
-                    wind_speed_ms =
-                        EXCLUDED.wind_speed_ms,
+                wave_height_m,
 
-                    u_wind_ms =
-                        EXCLUDED.u_wind_ms,
+                source,
 
-                    v_wind_ms =
-                        EXCLUDED.v_wind_ms,
+                data_status,
 
-                    wave_height_m =
-                        EXCLUDED.wave_height_m,
+                retrieved_at
 
-                    source =
-                        EXCLUDED.source,
-
-                    data_status =
-                        EXCLUDED.data_status,
-
-                    retrieved_at =
-                        EXCLUDED.retrieved_at
-                """,
-
-                (
-
-                    result[
-                        "forecast_time"
-                    ],
-
-                    result[
-                        "region"
-                    ],
-
-                    result[
-                        "latitude"
-                    ],
-
-                    result[
-                        "longitude"
-                    ],
-
-                    result[
-                        "wind_speed_ms"
-                    ],
-
-                    result[
-                        "u_wind_ms"
-                    ],
-
-                    result[
-                        "v_wind_ms"
-                    ],
-
-                    result[
-                        "wave_height_m"
-                    ],
-
-                    "INCOIS RSMC / WW3",
-
-                    "FORECAST",
-
-                    result[
-                        "retrieved_at"
-                    ].replace(
-                        tzinfo=None
-                    )
-
-                )
             )
 
+            VALUES (
 
-        connection.commit()
+                %s,
 
+                %s,
 
-        cursor.close()
+                %s,
 
+                %s,
 
-        print(
-            "Wind + wave forecast database "
-            "update completed."
+                %s,
+
+                %s,
+
+                %s,
+
+                %s,
+
+                %s,
+
+                %s,
+
+                %s
+
+            )
+
+            ON CONFLICT (
+                region,
+                forecast_time
+            )
+
+            DO UPDATE SET
+
+                latitude =
+                    EXCLUDED.latitude,
+
+                longitude =
+                    EXCLUDED.longitude,
+
+                wind_speed_ms =
+                    EXCLUDED.wind_speed_ms,
+
+                u_wind_ms =
+                    EXCLUDED.u_wind_ms,
+
+                v_wind_ms =
+                    EXCLUDED.v_wind_ms,
+
+                wave_height_m =
+                    EXCLUDED.wave_height_m,
+
+                source =
+                    EXCLUDED.source,
+
+                data_status =
+                    EXCLUDED.data_status,
+
+                retrieved_at =
+                    EXCLUDED.retrieved_at
+            """,
+
+            (
+
+                row[
+                    "forecast_time"
+                ],
+
+                row[
+                    "region"
+                ],
+
+                row[
+                    "latitude"
+                ],
+
+                row[
+                    "longitude"
+                ],
+
+                row[
+                    "wind_speed_ms"
+                ],
+
+                row[
+                    "u_wind_ms"
+                ],
+
+                row[
+                    "v_wind_ms"
+                ],
+
+                row[
+                    "wave_height_m"
+                ],
+
+                row[
+                    "source"
+                ],
+
+                row[
+                    "data_status"
+                ],
+
+                row[
+                    "retrieved_at"
+                ],
+            )
         )
 
+        # rowcount is 1 for both INSERT
+        # and UPDATE in PostgreSQL.
+        #
+        # We count successful database
+        # operations as updated/processed.
 
-    finally:
+        updated += 1
 
-        connection.close()
+    connection.commit()
+
+    cursor.close()
+
+    connection.close()
+
+    print()
+    print(
+        "Wind + wave database update completed."
+    )
+
+    print(
+        f"Processed: {updated}"
+    )
 
 
 # ============================================================
-# MAIN PROGRAM
+# MAIN
 # ============================================================
 
 if __name__ == "__main__":
 
     print()
-
     print(
         "=========================================="
     )
@@ -1234,52 +1235,19 @@ if __name__ == "__main__":
 
     print()
 
-
-    # --------------------------------------------------------
-    # Create / update table
-    # --------------------------------------------------------
-
     create_wind_forecast_table()
 
+    collect_wind_data()
 
-    # --------------------------------------------------------
-    # Collect latest available local forecast
-    # --------------------------------------------------------
-
-    forecast_results = (
-        collect_wind_data()
+    print()
+    print(
+        "=========================================="
     )
 
+    print(
+        " WIND + WAVE UPDATE COMPLETED"
+    )
 
-    # --------------------------------------------------------
-    # Save
-    # --------------------------------------------------------
-
-    if forecast_results:
-
-        save_wind_data(
-            forecast_results
-        )
-
-
-        print()
-
-        print(
-            "ORCA INCOIS wind + wave processing "
-            "completed successfully."
-        )
-
-
-        print(
-            f"Regions with valid forecast data: "
-            f"{len(forecast_results)}/4"
-        )
-
-
-    else:
-
-        print()
-
-        print(
-            "No wind/wave data was collected."
-        )
+    print(
+        "=========================================="
+    )

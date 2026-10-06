@@ -171,38 +171,6 @@ def extract_dates(text):
         except ValueError:
             pass
 
-    if dates:
-        return dates[-1], None
-
-    return None, None
-
-    if not text:
-        return None, None
-
-    matches = re.findall(
-        r"\b(\d{1,2})\s+"
-        r"(JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)"
-        r"\s+(\d{4})\b",
-        text.upper()
-    )
-
-    dates = []
-
-    for day, month, year in matches:
-
-        try:
-
-            value = datetime.strptime(
-                f"{day} {month} {year}",
-                "%d %b %Y"
-            ).date()
-
-            if value not in dates:
-                dates.append(value)
-
-        except ValueError:
-            pass
-
     if len(dates) >= 2:
 
         return dates[0], dates[1]
@@ -477,45 +445,24 @@ def save_pfz(results):
                 %s, %s, %s, %s, %s,
                 %s, %s, %s, %s, %s
             )
-           ON CONFLICT (
-    valid_upto,
-    sector,
-    landing_centre,
-    latitude,
-    longitude
-)
+            ON CONFLICT (
+                advisory_date,
+                sector,
+                landing_centre,
+                latitude,
+                longitude
+            )
             DO UPDATE SET
-
-                advisory_date =
-                    EXCLUDED.advisory_date,
-
-                direction =
-                    EXCLUDED.direction,
-
-                bearing_deg =
-                    EXCLUDED.bearing_deg,
-
-                distance_from_km =
-                    EXCLUDED.distance_from_km,
-
-                distance_to_km =
-                    EXCLUDED.distance_to_km,
-
-                depth_from_m =
-                    EXCLUDED.depth_from_m,
-
-                depth_to_m =
-                    EXCLUDED.depth_to_m,
-
-                source =
-                    EXCLUDED.source,
-
-                data_status =
-                    EXCLUDED.data_status,
-
-                retrieved_at =
-                    EXCLUDED.retrieved_at
-
+                valid_upto = EXCLUDED.valid_upto,
+                direction = EXCLUDED.direction,
+                bearing_deg = EXCLUDED.bearing_deg,
+                distance_from_km = EXCLUDED.distance_from_km,
+                distance_to_km = EXCLUDED.distance_to_km,
+                depth_from_m = EXCLUDED.depth_from_m,
+                depth_to_m = EXCLUDED.depth_to_m,
+                source = EXCLUDED.source,
+                data_status = EXCLUDED.data_status,
+                retrieved_at = EXCLUDED.retrieved_at
             RETURNING xmax
             """,
             (
@@ -540,11 +487,8 @@ def save_pfz(results):
         result = cursor.fetchone()
 
         if result and result[0] == 0:
-
             inserted += 1
-
         else:
-
             updated += 1
 
     conn.commit()
