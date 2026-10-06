@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 import asyncio
+import threading
 
 from ocean_agent import ocean_agent
 from weather_agent import weather_agent
@@ -13,38 +14,46 @@ from language_agent import language_agent
 from auto_update import automatic_update_loop
 
 
-# =========================================================
-# APPLICATION LIFESPAN
-# =========================================================
+# ============================================================
+# ORCA AUTOMATIC UPDATE SERVICE
+# ============================================================
+
+def run_automatic_updates():
+    try:
+        asyncio.run(automatic_update_loop())
+    except Exception as error:
+        print(f"[ORCA] Automatic update service error: {error}")
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
 
-    update_task = asyncio.create_task(
-        automatic_update_loop()
+    update_thread = threading.Thread(
+        target=run_automatic_updates,
+        daemon=True,
+        name="ORCA-Automatic-Update"
     )
 
-    print("[ORCA] Automatic update service started.")
+    update_thread.start()
+
+    print(
+        "[ORCA] Automatic update service started in background thread."
+    )
 
     try:
         yield
 
     finally:
-
-        update_task.cancel()
-
-        try:
-            await update_task
-
-        except asyncio.CancelledError:
-            pass
-
-        print("[ORCA] Automatic update service stopped.")
+        print("[ORCA] FastAPI shutdown requested.")
+        print(
+            "[ORCA] Background update thread will stop "
+            "with the service."
+        )
 
 
-# =========================================================
+# ============================================================
 # FASTAPI APPLICATION
-# =========================================================
+# ============================================================
 
 app = FastAPI(
     title="ORCA Real Marine Assistant",
@@ -52,9 +61,9 @@ app = FastAPI(
 )
 
 
-# =========================================================
+# ============================================================
 # CORS
-# =========================================================
+# ============================================================
 
 app.add_middleware(
     CORSMiddleware,
@@ -68,214 +77,148 @@ app.add_middleware(
 )
 
 
-# =========================================================
+# ============================================================
 # ROOT
-# =========================================================
+# ============================================================
 
 @app.get("/")
 def home():
-
     return {
         "message": "ORCA Real Backend is running!",
-        "project": (
-            "ORCA - Marine EcoSystem Reasoning "
-            "with Collaborative Agents"
-        )
+        "project": "ORCA - Marine EcoSystem Reasoning with Collaborative Agents"
     }
 
 
-# =========================================================
-# HEALTH CHECK
-# =========================================================
+# ============================================================
+# HEALTH
+# ============================================================
 
 @app.get("/health")
 def health():
-
     return {
         "status": "OK",
         "message": "ORCA backend is healthy"
     }
 
 
-# =========================================================
-# OCEAN AGENT
-# =========================================================
+# ============================================================
+# OCEAN
+# ============================================================
 
 @app.get("/ocean")
-def ocean(
-    state: str = "Tamil Nadu"
-):
-
+def ocean(state: str = "Tamil Nadu"):
     return ocean_agent(state)
 
 
-# =========================================================
-# WEATHER AGENT
-# =========================================================
+# ============================================================
+# WEATHER
+# ============================================================
 
 @app.get("/weather")
-def weather(
-    state: str = "Tamil Nadu"
-):
-
+def weather(state: str = "Tamil Nadu"):
     return weather_agent(state)
 
 
-# =========================================================
-# GIS AGENT
-# =========================================================
+# ============================================================
+# GIS
+# ============================================================
 
 @app.get("/gis")
 def gis(
     state: str = "Tamil Nadu",
     district: str = None
 ):
-
     return gis_agent(state)
 
 
-# =========================================================
-# PFZ / FISHING AGENT
-# =========================================================
+# ============================================================
+# PFZ
+# ============================================================
 
 @app.get("/pfz")
-def pfz(
-    state: str = "Tamil Nadu"
-):
-
+def pfz(state: str = "Tamil Nadu"):
     return pfz_agent(state)
 
 
-# =========================================================
-# SAFETY AGENT
-# =========================================================
+# ============================================================
+# MARINE SAFETY
+# ============================================================
 
 @app.get("/safety")
-def safety(
-    state: str = "Tamil Nadu"
-):
-
+def safety(state: str = "Tamil Nadu"):
     return safety_agent(state)
 
 
-# =========================================================
-# SATELLITE AGENT
-# =========================================================
+# ============================================================
+# SATELLITE
+# ============================================================
 
 @app.get("/satellite")
-def satellite(
-    state: str = "Tamil Nadu"
-):
-
+def satellite(state: str = "Tamil Nadu"):
     return satellite_agent(state)
 
 
-# =========================================================
-# LANGUAGE AGENT
-# =========================================================
+# ============================================================
+# LANGUAGE
+# ============================================================
 
 @app.get("/language")
-def language(
-    question: str = ""
-):
-
+def language(question: str = ""):
     return language_agent(question)
 
 
-# =========================================================
+# ============================================================
 # COLLABORATIVE AGENTS
-# =========================================================
+# ============================================================
 
 @app.get("/agents")
 def get_agents():
 
     return {
-
         "status": "SUCCESS",
-
-        "system": (
-            "ORCA Collaborative Agent System"
-        ),
-
+        "system": "ORCA Collaborative Agent System",
         "agent_count": 6,
 
         "agents": [
-
             {
                 "name": "Ocean Agent",
-                "status": "Integration Ready",
-                "responsibilities": [
-                    "SST",
-                    "Waves",
-                    "Currents"
-                ]
+                "role": "Ocean and marine condition analysis"
             },
-
             {
                 "name": "Weather Agent",
-                "status": "Integration Ready",
-                "responsibilities": [
-                    "Wind",
-                    "Weather",
-                    "Storms"
-                ]
+                "role": "Weather and forecast analysis"
             },
-
             {
                 "name": "GIS Agent",
-                "status": "Integration Ready",
-                "responsibilities": [
-                    "Coordinates",
-                    "Distance",
-                    "Spatial"
-                ]
+                "role": "Geospatial and location reasoning"
             },
-
             {
-                "name": "Fishing Agent",
-                "status": "Integration Ready",
-                "responsibilities": [
-                    "PFZ",
-                    "Chlorophyll",
-                    "Fishing"
-                ]
+                "name": "PFZ Agent",
+                "role": "Potential Fishing Zone intelligence"
             },
-
             {
-                "name": "Safety Agent",
-                "status": "Integration Ready",
-                "responsibilities": [
-                    "Hazards",
-                    "Alerts",
-                    "Risk"
-                ]
+                "name": "Marine Safety Agent",
+                "role": "Marine safety and risk analysis"
             },
-
             {
-                "name": "Coordinator / Planner",
-                "status": "Integration Ready",
-                "responsibilities": [
-                    "Planning",
-                    "Coordination",
-                    "Evidence"
-                ]
+                "name": "Satellite Agent",
+                "role": "Satellite-derived marine intelligence"
             }
         ],
 
         "source": "ORCA Backend",
 
         "note": (
-            "These agent records describe the ORCA "
-            "collaborative-agent architecture and "
-            "integration status. They do not represent "
+            "Agent outputs are based on available authoritative "
+            "data sources and ORCA reasoning. They do not represent "
             "fabricated live marine observations."
         )
     }
 
 
-# =========================================================
-# ORCA REASONING / COORDINATOR
-# =========================================================
+# ============================================================
+# ORCA REASONING
+# ============================================================
 
 @app.get("/reasoning")
 def reasoning(
@@ -298,31 +241,22 @@ def reasoning(
 
         return result
 
-    except Exception as e:
+    except Exception as error:
 
         return {
-
             "agent": "ORCA Reasoning Layer",
-
             "status": "ERROR",
-
             "question": question,
-
             "state": state,
-
             "district": district,
-
-            "message": (
-                "Unable to generate ORCA reasoning."
-            ),
-
-            "error": str(e)
+            "message": "Unable to generate ORCA reasoning.",
+            "error": str(error)
         }
 
 
-# =========================================================
-# ORCA AI ASSISTANT
-# =========================================================
+# ============================================================
+# ORCA ASSISTANT
+# ============================================================
 
 @app.get("/ask")
 def ask(
@@ -338,9 +272,9 @@ def ask(
     )
 
 
-# =========================================================
+# ============================================================
 # FORECAST HISTORY
-# =========================================================
+# ============================================================
 
 @app.get("/forecast-history")
 def forecast_history(
@@ -351,10 +285,44 @@ def forecast_history(
 
         from db_connection import get_connection
 
+        # ----------------------------------------------------
+        # FRONTEND STATE -> DATABASE REGION
+        # ----------------------------------------------------
+
+        region_map = {
+
+            "Tamil Nadu":
+                "Tamil Nadu / Bay of Bengal",
+
+            "Kerala":
+                "Kerala / Arabian Sea",
+
+            "Karnataka":
+                "Karnataka / Arabian Sea",
+
+            "Gujarat":
+                "Gujarat / Arabian Sea"
+        }
+
+        database_region = region_map.get(
+            state,
+            state
+        )
+
+        # ----------------------------------------------------
+        # DATABASE CONNECTION
+        # ----------------------------------------------------
+
         connection = get_connection()
+
         cursor = connection.cursor()
 
-        cursor.execute("""
+        # ----------------------------------------------------
+        # GET FORECAST DATA
+        # ----------------------------------------------------
+
+        cursor.execute(
+            """
             SELECT
                 forecast_time,
                 wind_speed_ms,
@@ -364,35 +332,59 @@ def forecast_history(
             WHERE LOWER(region) = LOWER(%s)
             ORDER BY forecast_time DESC
             LIMIT 50
-        """, (state,))
+            """,
+            (database_region,)
+        )
 
         rows = cursor.fetchall()
+
+        # ----------------------------------------------------
+        # FORMAT RESPONSE
+        # ----------------------------------------------------
 
         data = []
 
         for row in rows:
 
-            data.append({
-                "forecast_time": (
-                    row[0].isoformat()
-                    if row[0]
-                    else None
-                ),
+            data.append(
+                {
+                    "forecast_time":
+                        row[0].isoformat()
+                        if row[0]
+                        else None,
 
-                "wind_speed_ms": row[1],
+                    "wind_speed_ms":
+                        row[1],
 
-                "wave_height_m": row[2],
+                    "wave_height_m":
+                        row[2],
 
-                "source": row[3]
-            })
+                    "source":
+                        row[3]
+                }
+            )
+
+        # ----------------------------------------------------
+        # CLOSE DATABASE
+        # ----------------------------------------------------
 
         cursor.close()
         connection.close()
 
+        # ----------------------------------------------------
+        # RESPONSE
+        # ----------------------------------------------------
+
         return {
+
             "status": "SUCCESS",
+
             "state": state,
+
+            "region": database_region,
+
             "count": len(data),
+
             "data": data
         }
 
@@ -403,11 +395,15 @@ def forecast_history(
         )
 
         return {
+
             "status": "ERROR",
+
             "state": state,
+
             "count": 0,
+
             "data": [],
-            "message": (
+
+            "message":
                 "Forecast history could not be loaded."
-            )
         }
