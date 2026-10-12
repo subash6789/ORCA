@@ -206,78 +206,77 @@ DISTRICT_ALIASES = {
 def load_orca_districts():
     """
     Load supported state/district combinations from
-    the official district GeoJSON used by ORCA.
+    the official district GeoJSON used by ORCA, or fall back to
+    district_canonical_coords.json if the 100MB GeoJSON is not bundled in git.
     """
 
-    if not DISTRICT_GEOJSON.exists():
-        logger.warning(
-            "District GeoJSON not found: %s",
-            DISTRICT_GEOJSON
-        )
-        return {}
+    if DISTRICT_GEOJSON.exists():
+        try:
+            with open(
+                DISTRICT_GEOJSON,
+                "r",
+                encoding="utf-8"
+            ) as file:
+                geojson = json.load(file)
 
-    try:
-
-        with open(
-            DISTRICT_GEOJSON,
-            "r",
-            encoding="utf-8"
-        ) as file:
-
-            geojson = json.load(file)
-
-        districts = {}
-
-        for feature in geojson.get("features", []):
-
-            properties = feature.get(
-                "properties",
-                {}
-            )
-
-            state_name = properties.get(
-                "state_name"
-            )
-
-            district_name = properties.get(
-                "district"
-            )
-
-            if (
-                state_name in SUPPORTED_STATES
-                and district_name
-            ):
-
-                districts.setdefault(
-                    state_name,
-                    set()
-                ).add(
-                    district_name
+            districts = {}
+            for feature in geojson.get("features", []):
+                properties = feature.get(
+                    "properties",
+                    {}
                 )
-
-        logger.info(
-            "Loaded district validation data for %d states.",
-            len(districts)
-        )
-
-        for state_name, district_set in districts.items():
+                state_name = properties.get(
+                    "state_name"
+                )
+                district_name = properties.get(
+                    "district"
+                )
+                if (
+                    state_name in SUPPORTED_STATES
+                    and district_name
+                ):
+                    districts.setdefault(
+                        state_name,
+                        set()
+                    ).add(
+                        district_name
+                    )
 
             logger.info(
-                "%s: %d districts",
-                state_name,
-                len(district_set)
+                "Loaded district validation data from GeoJSON for %d states.",
+                len(districts)
+            )
+            return districts
+        except Exception as error:
+            logger.exception(
+                "Failed to load district GeoJSON: %s",
+                error
             )
 
-        return districts
+    # Fallback to district_canonical_coords.json
+    coords_json = BASE_DIR / "district_canonical_coords.json"
+    if coords_json.exists():
+        try:
+            with open(coords_json, "r", encoding="utf-8") as f:
+                coords_data = json.load(f)
+            districts = {
+                state: set(d_dict.keys())
+                for state, d_dict in coords_data.items()
+                if state in SUPPORTED_STATES
+            }
+            logger.info(
+                "Loaded district validation data from coords JSON fallback for %d states.",
+                len(districts)
+            )
+            return districts
+        except Exception as error:
+            logger.exception(
+                "Failed to load district_canonical_coords.json: %s",
+                error
+            )
 
-    except Exception as error:
-
-        logger.exception(
-            "Failed to load district GeoJSON: %s",
-            error
-        )
-
-        return {}
+    logger.warning("District validation datasets not found.")
+    return {}
 
 
 ORCA_DISTRICTS = load_orca_districts()
