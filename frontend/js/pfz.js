@@ -539,6 +539,16 @@ async function loadPFZModule() {
     }
 
 
+    const districtSelect =
+        document.getElementById(
+            "districtSelect"
+        );
+
+    const district =
+        districtSelect
+            ? districtSelect.value
+            : "";
+
     if (sourceNotice) {
 
         sourceNotice.textContent =
@@ -552,7 +562,8 @@ async function loadPFZModule() {
         const result =
             await safeApiCall(
                 getPFZData,
-                region
+                region,
+                district
             );
 
 
@@ -653,10 +664,24 @@ function setupPFZModule() {
             "regionSelect"
         );
 
+    const districtSelect =
+        document.getElementById(
+            "districtSelect"
+        );
+
 
     if (regionSelect) {
 
         regionSelect.addEventListener(
+            "change",
+            loadPFZModule
+        );
+
+    }
+
+    if (districtSelect) {
+
+        districtSelect.addEventListener(
             "change",
             loadPFZModule
         );

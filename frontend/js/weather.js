@@ -446,12 +446,24 @@ async function loadWeatherModule() {
             : "North Tamil Nadu";
 
 
+    const districtSelect =
+        document.getElementById(
+            "districtSelect"
+        );
+
+    const district =
+        districtSelect
+            ? districtSelect.value
+            : "";
+
+
     try {
 
         const result =
             await safeApiCall(
                 getWeatherData,
-                region
+                region,
+                district
             );
 
 
@@ -507,9 +519,24 @@ function setupWeatherModule() {
             "regionSelect"
         );
 
+    const districtSelect =
+        document.getElementById(
+            "districtSelect"
+        );
+
     if (regionSelect) {
 
         regionSelect.addEventListener(
+            "change",
+            () => {
+                loadWeatherModule();
+            }
+        );
+    }
+
+    if (districtSelect) {
+
+        districtSelect.addEventListener(
             "change",
             () => {
                 loadWeatherModule();

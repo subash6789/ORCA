@@ -391,10 +391,17 @@ document.addEventListener("DOMContentLoaded", () => {
             const region =
                 getSelectedRegion();
 
+            const districtSelect =
+                document.getElementById("districtSelect");
+
+            const district =
+                districtSelect ? districtSelect.value : "";
+
             const result =
                 await getReasoningData(
                     region,
-                    "What is the overall marine condition?"
+                    "What is the overall marine condition?",
+                    district
                 );
 
             if (!result) {
@@ -434,6 +441,30 @@ document.addEventListener("DOMContentLoaded", () => {
 
     window.loadORCAReasoning =
         loadReasoning;
+
+    const regionSelect =
+        document.getElementById("regionSelect");
+
+    const districtSelect =
+        document.getElementById("districtSelect");
+
+    if (regionSelect) {
+        regionSelect.addEventListener("change", () => {
+            const reasoningPage = document.getElementById("page-reasoning");
+            if (reasoningPage && reasoningPage.classList.contains("active")) {
+                loadReasoning();
+            }
+        });
+    }
+
+    if (districtSelect) {
+        districtSelect.addEventListener("change", () => {
+            const reasoningPage = document.getElementById("page-reasoning");
+            if (reasoningPage && reasoningPage.classList.contains("active")) {
+                loadReasoning();
+            }
+        });
+    }
 
     const reasoningNav =
         document.querySelector(

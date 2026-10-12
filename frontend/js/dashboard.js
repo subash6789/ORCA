@@ -19,6 +19,16 @@ function getSelectedRegion() {
         : "Tamil Nadu";
 }
 
+function getSelectedDistrict() {
+
+    const districtSelect =
+        document.getElementById("districtSelect");
+
+    return districtSelect
+        ? districtSelect.value
+        : "";
+}
+
 
 /* =========================================================
    CONNECTION STATUS
@@ -534,12 +544,16 @@ async function loadDashboardWeather() {
     const region =
         getSelectedRegion();
 
+    const district =
+        getSelectedDistrict();
+
     try {
 
         const result =
             await safeApiCall(
                 getWeatherData,
-                region
+                region,
+                district
             );
 
 
@@ -640,6 +654,9 @@ async function loadDashboardPFZ() {
     const region =
         getSelectedRegion();
 
+    const district =
+        getSelectedDistrict();
+
 
     const pfzValue =
         document.getElementById(
@@ -672,7 +689,8 @@ async function loadDashboardPFZ() {
         const result =
             await safeApiCall(
                 getPFZData,
-                region
+                region,
+                district
             );
 
 
@@ -812,6 +830,9 @@ async function loadDashboardInsight() {
     const region =
         getSelectedRegion();
 
+    const district =
+        getSelectedDistrict();
+
 
     const insight =
         document.getElementById(
@@ -829,7 +850,7 @@ async function loadDashboardInsight() {
                 getReasoningData,
                 region,
                 "What are the current marine conditions?",
-                ""
+                district
             );
 
 
@@ -1778,6 +1799,9 @@ async function loadDashboardData() {
     const region =
         getSelectedRegion();
 
+    const district =
+        getSelectedDistrict();
+
 
     const refreshButton =
         document.getElementById(
@@ -1804,7 +1828,8 @@ async function loadDashboardData() {
         const oceanResult =
             await safeApiCall(
                 getOceanData,
-                region
+                region,
+                district
             );
 
 
@@ -1932,10 +1957,55 @@ function setupDashboard() {
             "regionSelect"
         );
 
+    const districtSelect =
+        document.getElementById(
+            "districtSelect"
+        );
+
+
+    async function updateDistrictDropdown() {
+        if (!districtSelect || !regionSelect) return;
+        const state = regionSelect.value;
+
+        try {
+            if (!window.ORCA_ALL_DISTRICTS) {
+                const locs = await getLocationsData();
+                if (locs && locs.districts) {
+                    window.ORCA_ALL_DISTRICTS = locs.districts;
+                }
+            }
+
+            const distList = (window.ORCA_ALL_DISTRICTS && window.ORCA_ALL_DISTRICTS[state]) || [];
+            districtSelect.innerHTML = '<option value="">All Districts</option>';
+            distList.forEach((d) => {
+                const opt = document.createElement("option");
+                opt.value = d;
+                opt.textContent = d;
+                districtSelect.appendChild(opt);
+            });
+        } catch (e) {
+            console.error("Failed to populate districts:", e);
+        }
+    }
+
 
     if (regionSelect) {
 
         regionSelect.addEventListener(
+            "change",
+            async () => {
+
+                await updateDistrictDropdown();
+
+                loadDashboardData();
+
+            }
+        );
+    }
+
+    if (districtSelect) {
+
+        districtSelect.addEventListener(
             "change",
             () => {
 
@@ -1944,6 +2014,9 @@ function setupDashboard() {
             }
         );
     }
+
+    // Initial population of districts
+    updateDistrictDropdown();
 }
 
 

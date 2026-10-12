@@ -1,9 +1,27 @@
 /* =========================================================
    ORCA MARINE INTELLIGENCE
-   LOCAL BACKEND API CONNECTION
+   ENVIRONMENT-AWARE BACKEND API CONNECTION
 ========================================================= */
 
-const ORCA_API_BASE_URL = "http://127.0.0.1:8000";
+const ORCA_LOCAL_API = "http://127.0.0.1:8000";
+const ORCA_CLOUD_API = "https://orca-backend-zb8o.onrender.com";
+
+function getOrcaApiBaseUrl() {
+    if (typeof window !== "undefined" && window.location) {
+        const hostname = window.location.hostname;
+        if (
+            hostname === "localhost" ||
+            hostname === "127.0.0.1" ||
+            hostname === "0.0.0.0" ||
+            window.location.protocol === "file:"
+        ) {
+            return ORCA_LOCAL_API;
+        }
+    }
+    return ORCA_CLOUD_API;
+}
+
+const ORCA_API_BASE_URL = getOrcaApiBaseUrl();
 
 
 /* =========================================================
@@ -54,13 +72,25 @@ async function checkBackendHealth() {
 
 
 /* =========================================================
+   LOCATIONS
+========================================================= */
+
+async function getLocationsData() {
+
+    return await orcaGet("/locations");
+
+}
+
+
+/* =========================================================
    OCEAN AGENT
 ========================================================= */
 
-async function getOceanData(state = "Tamil Nadu") {
+async function getOceanData(state = "Tamil Nadu", district = "") {
 
     return await orcaGet("/ocean", {
-        state: state
+        state: state,
+        district: district
     });
 
 }
@@ -70,10 +100,11 @@ async function getOceanData(state = "Tamil Nadu") {
    PFZ / FISHING AGENT
 ========================================================= */
 
-async function getPFZData(state = "Tamil Nadu") {
+async function getPFZData(state = "Tamil Nadu", district = "") {
 
     return await orcaGet("/pfz", {
-        state: state
+        state: state,
+        district: district
     });
 
 }
@@ -83,10 +114,11 @@ async function getPFZData(state = "Tamil Nadu") {
    WEATHER AGENT
 ========================================================= */
 
-async function getWeatherData(state = "Tamil Nadu") {
+async function getWeatherData(state = "Tamil Nadu", district = "") {
 
     return await orcaGet("/weather", {
-        state: state
+        state: state,
+        district: district
     });
 
 }
@@ -113,10 +145,11 @@ async function getGISData(
    SAFETY AGENT
 ========================================================= */
 
-async function getSafetyData(state = "Tamil Nadu") {
+async function getSafetyData(state = "Tamil Nadu", district = "") {
 
     return await orcaGet("/safety", {
-        state: state
+        state: state,
+        district: district
     });
 
 }
@@ -126,10 +159,11 @@ async function getSafetyData(state = "Tamil Nadu") {
    SATELLITE AGENT
 ========================================================= */
 
-async function getSatelliteData(state = "Tamil Nadu") {
+async function getSatelliteData(state = "Tamil Nadu", district = "") {
 
     return await orcaGet("/satellite", {
-        state: state
+        state: state,
+        district: district
     });
 
 }

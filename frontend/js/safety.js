@@ -432,6 +432,12 @@ async function loadSafetyModule() {
     }
 
 
+    const districtSelect =
+        document.getElementById("districtSelect");
+
+    const district =
+        districtSelect ? districtSelect.value : "";
+
     if (sourceNotice) {
 
         sourceNotice.textContent =
@@ -444,7 +450,8 @@ async function loadSafetyModule() {
         const result =
             await safeApiCall(
                 getSafetyData,
-                region
+                region,
+                district
             );
 
 
@@ -490,10 +497,21 @@ function setupSafetyModule() {
     const regionSelect =
         document.getElementById("regionSelect");
 
+    const districtSelect =
+        document.getElementById("districtSelect");
+
 
     if (regionSelect) {
 
         regionSelect.addEventListener(
+            "change",
+            loadSafetyModule
+        );
+    }
+
+    if (districtSelect) {
+
+        districtSelect.addEventListener(
             "change",
             loadSafetyModule
         );

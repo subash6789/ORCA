@@ -29,10 +29,38 @@ CHL_URL = (
     "A-Sep2026-d27-1KM-Entire-CHL.nc"
 )
 
+BACKEND_DIR = os.path.dirname(os.path.abspath(__file__))
+
 NC_FILE = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)),
+    BACKEND_DIR,
     "A-Sep2026-d27-1KM-Entire-CHL.nc"
 )
+
+
+# ============================================================
+# PARSE CHL FILENAME DATE
+# ============================================================
+
+def parse_chl_filename_date(filename):
+    import re
+    base = os.path.basename(filename)
+    m = re.search(r"A-([A-Za-z]+)(\d{4})-d(\d{2})", base)
+    if m:
+        mon_str, year_str, day_str = m.groups()
+        months = {
+            "jan": 1, "feb": 2, "mar": 3, "apr": 4, "may": 5, "jun": 6,
+            "jul": 7, "aug": 8, "sep": 9, "oct": 10, "nov": 11, "dec": 12
+        }
+        mm = months.get(mon_str.lower(), 1)
+        return f"{year_str}-{mm:02d}-{int(day_str):02d}"
+    return None
+
+
+def discover_chl_files():
+    from pathlib import Path
+    p = Path(BACKEND_DIR)
+    files = list(p.glob("*CHL*.nc"))
+    return sorted(files, key=lambda f: parse_chl_filename_date(f.name) or "", reverse=True)
 
 
 # ============================================================
@@ -250,18 +278,20 @@ def find_coordinate_name(ds, candidates):
 # OPEN CHL DATASET
 # ============================================================
 
-def open_chlorophyll_dataset():
+def open_chlorophyll_dataset(file_path=None):
 
-    if not os.path.exists(NC_FILE):
+    target_file = str(file_path or NC_FILE)
+
+    if not os.path.exists(target_file):
 
         raise FileNotFoundError(
-            f"CHL NetCDF file not found:\n{NC_FILE}"
+            f"CHL NetCDF file not found:\n{target_file}"
         )
 
-    print("\nOpening downloaded CHL dataset...")
+    print(f"\nOpening CHL dataset: {os.path.basename(target_file)}...")
 
     ds = xr.open_dataset(
-        NC_FILE,
+        target_file,
         engine="netcdf4"
     )
 
@@ -700,152 +730,70 @@ def extract_region_chl(
 def collect_chlorophyll_data():
 
     # --------------------------------------------------------
-    # Download official product
+    # 1. Attempt download of official product if missing
     # --------------------------------------------------------
-
-    download_chlorophyll_product()
-
-    # --------------------------------------------------------
-    # Open dataset
-    # --------------------------------------------------------
-
-    ds, lat_name, lon_name = (
-        open_chlorophyll_dataset()
-    )
-
     try:
+        if not os.path.exists(NC_FILE):
+            download_chlorophyll_product()
+    except Exception as dl_err:
+        print(f"Warning: Online download attempt skipped/failed: {dl_err}")
 
-        # ----------------------------------------------------
-        # Observation time
-        # ----------------------------------------------------
+    # --------------------------------------------------------
+    # 2. Discover eligible local composite files in chronological order
+    # --------------------------------------------------------
+    eligible_files = discover_chl_files()
+    if not eligible_files:
+        if os.path.exists(NC_FILE):
+            eligible_files = [NC_FILE]
+        else:
+            raise FileNotFoundError("No INCOIS Chlorophyll NetCDF files found on disk.")
 
-        observation_time = (
-            get_observation_time(ds)
-        )
+    print(f"\nDiscovered {len(eligible_files)} local CHL composite files.")
 
-        print(
-            f"\nObservation time: "
-            f"{observation_time}"
-        )
+    results = []
+    unresolved_regions = dict(REGIONS)
 
-        print(
-            f"Product: "
-            f"{ds.attrs.get('product_name', 'N/A')}"
-        )
+    for file_path in eligible_files:
+        if not unresolved_regions:
+            break
 
-        print(
-            f"Instrument: "
-            f"{ds.attrs.get('instrument', 'N/A')}"
-        )
+        try:
+            ds, lat_name, lon_name = open_chlorophyll_dataset(file_path)
+        except Exception as open_err:
+            print(f"Skipping {file_path}: {open_err}")
+            continue
 
-        print(
-            f"Platform: "
-            f"{ds.attrs.get('platform', 'N/A')}"
-        )
+        try:
+            obs_time = get_observation_time(ds)
+            print(f"\nScanning {os.path.basename(file_path)} (Observation time: {obs_time})...")
 
-        # ----------------------------------------------------
-        # Dataset coordinate information
-        # ----------------------------------------------------
+            resolved_this_file = []
+            for region_name, bounds in list(unresolved_regions.items()):
+                print(f"  Checking {region_name}...")
+                result = extract_region_chl(ds, lat_name, lon_name, region_name, bounds)
+                if result and result.get("valid_pixels", 0) > 0:
+                    result["observation_time"] = obs_time
+                    result["source_file"] = os.path.basename(file_path)
+                    print(
+                        f"    -> VALID CHL: {result['chlorophyll_mg_m3']:.4f} mg/m³ "
+                        f"({result['valid_pixels']} pixels)"
+                    )
+                    results.append(result)
+                    resolved_this_file.append(region_name)
+                else:
+                    print(f"    -> No valid pixels in this file pass (cloud/land masked).")
 
-        print(
-            "\nDataset coordinates:"
-        )
+            for rname in resolved_this_file:
+                del unresolved_regions[rname]
 
-        print(
-            f"Latitude: {lat_name}"
-        )
+        finally:
+            ds.close()
 
-        print(
-            f"Longitude: {lon_name}"
-        )
+    if unresolved_regions:
+        for rname in unresolved_regions:
+            print(f"\nWarning: {rname} had no valid unclouded pixels across all scanned composite files.")
 
-        results = []
-
-        # ----------------------------------------------------
-        # Process every ORCA region
-        # ----------------------------------------------------
-
-        for region_name, bounds in REGIONS.items():
-
-            print(
-                "\n"
-                + "-" * 60
-            )
-
-            print(
-                f"Processing {region_name}..."
-            )
-
-            print(
-                f"Latitude box: "
-                f"{bounds['lat_min']} "
-                f"to "
-                f"{bounds['lat_max']}"
-            )
-
-            print(
-                f"Longitude box: "
-                f"{bounds['lon_min']} "
-                f"to "
-                f"{bounds['lon_max']}"
-            )
-
-            result = extract_region_chl(
-                ds,
-                lat_name,
-                lon_name,
-                region_name,
-                bounds
-            )
-
-            if result is None:
-
-                print(
-                    f"{region_name}: "
-                    "NO VALID CHL DATA"
-                )
-
-                continue
-
-            result[
-                "observation_time"
-            ] = observation_time
-
-            print(
-                f"{region_name}: "
-                f"{result['chlorophyll_mg_m3']:.4f} "
-                "mg/m³"
-            )
-
-            print(
-                f"  Valid pixels: "
-                f"{result['valid_pixels']}"
-            )
-
-            print(
-                f"  Minimum: "
-                f"{result['minimum_mg_m3']:.4f}"
-            )
-
-            print(
-                f"  Maximum: "
-                f"{result['maximum_mg_m3']:.4f}"
-            )
-
-            print(
-                f"  Median: "
-                f"{result['median_mg_m3']:.4f}"
-            )
-
-            results.append(
-                result
-            )
-
-        return results
-
-    finally:
-
-        ds.close()
+    return results
 
 
 # ============================================================

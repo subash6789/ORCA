@@ -1,8 +1,17 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
+from pathlib import Path
 import asyncio
-import threading
+import json
+import logging
+
+
+# ============================================================
+# ORCA AGENTS
+# ============================================================
+
+from auto_update import automatic_update_loop
 
 from ocean_agent import ocean_agent
 from weather_agent import weather_agent
@@ -11,43 +20,466 @@ from pfz_agent import pfz_agent
 from safety_agent import safety_agent
 from satellite_agent import satellite_agent
 from language_agent import language_agent
-from auto_update import automatic_update_loop
 
 
 # ============================================================
-# ORCA AUTOMATIC UPDATE SERVICE
+# LOGGING
 # ============================================================
 
-def run_automatic_updates():
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s | %(levelname)s | %(name)s | %(message)s"
+)
+
+logger = logging.getLogger("ORCA")
+
+
+# ============================================================
+# LOCATION VALIDATION
+# ============================================================
+
+BASE_DIR = Path(__file__).resolve().parent
+
+DISTRICT_GEOJSON = (
+    BASE_DIR
+    / "data"
+    / "district_boundary_extracted"
+    / "district_nwic.GeoJSON"
+)
+
+
+SUPPORTED_STATES = {
+    "Tamil Nadu",
+    "Kerala",
+    "Karnataka",
+    "Gujarat"
+}
+
+
+# Common user/frontend names -> official GeoJSON names
+DISTRICT_ALIASES = {
+
+    # Karnataka
+    "bagalkot": "Bagalkote",
+    "bagalkote": "Bagalkote",
+    "ballari": "Ballari",
+    "bellary": "Ballari",
+    "belagavi": "Belagavi",
+    "belgaum": "Belagavi",
+    "bengaluru rural": "Bengaluru Rural",
+    "bangalore rural": "Bengaluru Rural",
+    "bengaluru urban": "Bengaluru Urban",
+    "bangalore urban": "Bengaluru Urban",
+    "bangalore": "Bengaluru Urban",
+    "bengaluru": "Bengaluru Urban",
+    "bidar": "Bidar",
+    "chamarajanagar": "Chamarajanagara",
+    "chamarajanagara": "Chamarajanagara",
+    "chikkaballapur": "Chikkaballapura",
+    "chikkaballapura": "Chikkaballapura",
+    "chikkamagaluru": "Chikkamagaluru",
+    "chikmagalur": "Chikkamagaluru",
+    "chikkamagalur": "Chikkamagaluru",
+    "chitradurga": "Chitradurga",
+    "dakshina kannada": "Dakshina Kannada",
+    "south canara": "Dakshina Kannada",
+    "mangaluru": "Dakshina Kannada",
+    "mangalore": "Dakshina Kannada",
+    "davangere": "Davangere",
+    "davanagere": "Davangere",
+    "dharwad": "Dharwad",
+    "gadag": "Gadag",
+    "hassan": "Hassan",
+    "haveri": "Haveri",
+    "kalaburagi": "Kalaburagi",
+    "gulbarga": "Kalaburagi",
+    "kodagu": "Kodagu",
+    "coorg": "Kodagu",
+    "kolar": "Kolar",
+    "koppal": "Koppal",
+    "mandya": "Mandya",
+    "mysuru": "Mysuru",
+    "mysore": "Mysuru",
+    "raichur": "Raichur",
+    "ramanagara": "Ramanagara",
+    "shivamogga": "Shivamogga",
+    "shimoga": "Shivamogga",
+    "tumakuru": "Tumakuru",
+    "tumkur": "Tumakuru",
+    "udupi": "Udupi",
+    "uttara kannada": "Uttara Kannada",
+    "north canara": "Uttara Kannada",
+    "karwar": "Uttara Kannada",
+    "vijayapura": "Vijayapura",
+    "bijapur": "Vijayapura",
+    "yadgir": "Yadgir",
+
+    # Gujarat
+    "ahmedabad": "Ahmadabad",
+    "ahmadabad": "Ahmadabad",
+    "aravalli": "Arvalli",
+    "arvalli": "Arvalli",
+    "banaskantha": "Banas Kantha",
+    "banas kantha": "Banas Kantha",
+    "banaaskantha": "Banas Kantha",
+    "baroda": "Vadodara",
+    "vadodara": "Vadodara",
+    "chhota udepur": "Chhotaudepur",
+    "chhotaudepur": "Chhotaudepur",
+    "chhota udaipur": "Chhotaudepur",
+    "chhota-udepur": "Chhotaudepur",
+    "dang": "Dang",
+    "dangs": "Dang",
+    "the dang": "Dang",
+    "the dangs": "Dang",
+    "dahod": "Dohad",
+    "dohad": "Dohad",
+    "devbhoomi dwarka": "Devbhumi Dwarka",
+    "devbhumi dwarka": "Devbhumi Dwarka",
+    "dwarka": "Devbhumi Dwarka",
+    "kutch": "Kachchh",
+    "kutchh": "Kachchh",
+    "kachchh": "Kachchh",
+    "mehsana": "Mahesana",
+    "mahesana": "Mahesana",
+    "panchmahal": "Panch Mahals",
+    "panch mahals": "Panch Mahals",
+    "sabarkantha": "Sabar Kantha",
+    "sabar kantha": "Sabar Kantha",
+
+    # Kerala aliases
+    "calicut": "Kozhikode",
+    "kozhikode": "Kozhikode",
+    "cochin": "Ernakulam",
+    "kochi": "Ernakulam",
+    "ernakulam": "Ernakulam",
+    "trivandrum": "Thiruvananthapuram",
+    "thiruvananthapuram": "Thiruvananthapuram",
+    "alleppey": "Alappuzha",
+    "alappuzha": "Alappuzha",
+    "palghat": "Palakkad",
+    "palakkad": "Palakkad",
+    "quilon": "Kollam",
+    "kollam": "Kollam",
+    "trichur": "Thrissur",
+    "thrissur": "Thrissur",
+    "cannanore": "Kannur",
+    "kannur": "Kannur",
+    "kasargod": "Kasaragod",
+    "kasaragod": "Kasaragod",
+    "wynad": "Wayanad",
+    "wayanad": "Wayanad",
+
+    # Tamil Nadu common spellings
+    "chennai": "Chennai",
+    "madras": "Chennai",
+    "kancheepuram": "Kanchipuram",
+    "kanchipuram": "Kanchipuram",
+    "kanniyakumari": "Kanniyakumari",
+    "kanyakumari": "Kanniyakumari",
+    "madura": "Madurai",
+    "madurai": "Madurai",
+    "nilgiris": "The Nilgiris",
+    "the nilgiris": "The Nilgiris",
+    "tanjore": "Thanjavur",
+    "thanjavur": "Thanjavur",
+    "tiruvallur": "Thiruvallur",
+    "thiruvallur": "Thiruvallur",
+    "tiruvarur": "Thiruvarur",
+    "thiruvarur": "Thiruvarur",
+    "thoothukudi": "Tuticorin",
+    "tuticorin": "Tuticorin",
+    "trichy": "Tiruchirappalli",
+    "tiruchy": "Tiruchirappalli",
+    "tiruchirapalli": "Tiruchirappalli",
+    "tiruchirappalli": "Tiruchirappalli",
+    "tinnevelly": "Tirunelveli",
+    "tirunelveli": "Tirunelveli",
+    "tirunelveli kattabo": "Tirunelveli",
+    "tirunelveli kattabomman": "Tirunelveli",
+    "viluppuram": "Villupuram",
+    "villupuram": "Villupuram",
+
+}
+
+
+def load_orca_districts():
+    """
+    Load supported state/district combinations from
+    the official district GeoJSON used by ORCA.
+    """
+
+    if not DISTRICT_GEOJSON.exists():
+        logger.warning(
+            "District GeoJSON not found: %s",
+            DISTRICT_GEOJSON
+        )
+        return {}
+
     try:
-        asyncio.run(automatic_update_loop())
-    except Exception as error:
-        print(f"[ORCA] Automatic update service error: {error}")
 
+        with open(
+            DISTRICT_GEOJSON,
+            "r",
+            encoding="utf-8"
+        ) as file:
+
+            geojson = json.load(file)
+
+        districts = {}
+
+        for feature in geojson.get("features", []):
+
+            properties = feature.get(
+                "properties",
+                {}
+            )
+
+            state_name = properties.get(
+                "state_name"
+            )
+
+            district_name = properties.get(
+                "district"
+            )
+
+            if (
+                state_name in SUPPORTED_STATES
+                and district_name
+            ):
+
+                districts.setdefault(
+                    state_name,
+                    set()
+                ).add(
+                    district_name
+                )
+
+        logger.info(
+            "Loaded district validation data for %d states.",
+            len(districts)
+        )
+
+        for state_name, district_set in districts.items():
+
+            logger.info(
+                "%s: %d districts",
+                state_name,
+                len(district_set)
+            )
+
+        return districts
+
+    except Exception as error:
+
+        logger.exception(
+            "Failed to load district GeoJSON: %s",
+            error
+        )
+
+        return {}
+
+
+ORCA_DISTRICTS = load_orca_districts()
+
+
+def normalize_district_name(district):
+    """
+    Normalize spaces and common district aliases.
+    """
+
+    if district is None:
+        return None
+
+    cleaned = " ".join(
+        str(district)
+        .strip()
+        .split()
+    )
+
+    alias = DISTRICT_ALIASES.get(
+        cleaned.lower()
+    )
+
+    if alias:
+        return alias
+
+    return cleaned
+
+
+def validate_state(state):
+    """
+    Validate state and return canonical state name.
+    """
+
+    if state is None:
+        raise HTTPException(
+            status_code=400,
+            detail="State is required."
+        )
+
+    state_clean = " ".join(
+        str(state)
+        .strip()
+        .split()
+    )
+
+    matched_state = next(
+        (
+            supported
+            for supported in SUPPORTED_STATES
+            if supported.lower() == state_clean.lower()
+        ),
+        None
+    )
+
+    if matched_state is None:
+
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": "INVALID_STATE",
+                "message": (
+                    f"Invalid state: {state}."
+                ),
+                "supported_states": sorted(
+                    SUPPORTED_STATES
+                )
+            }
+        )
+
+    return matched_state
+
+
+def validate_location(
+    state,
+    district=None
+):
+    """
+    Validate state and optional district.
+
+    Returns:
+        canonical_state,
+        canonical_district
+    """
+
+    matched_state = validate_state(state)
+
+    # District is optional for state-level endpoints
+    if (
+        district is None
+        or str(district).strip() == ""
+    ):
+        return matched_state, None
+
+    district_clean = normalize_district_name(
+        district
+    )
+
+    valid_districts = ORCA_DISTRICTS.get(
+        matched_state,
+        set()
+    )
+
+    # If GeoJSON is unavailable, do not silently
+    # accept an unknown district.
+    if not valid_districts:
+
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "error": "DISTRICT_DATA_UNAVAILABLE",
+                "message": (
+                    "District validation data is unavailable."
+                ),
+                "state": matched_state
+            }
+        )
+
+    matched_district = next(
+        (
+            valid
+            for valid in valid_districts
+            if valid.lower() == district_clean.lower()
+        ),
+        None
+    )
+
+    # Secondary fuzzy / alphanumeric stem match (e.g. Bagalkot <-> Bagalkote)
+    if matched_district is None:
+        import re
+        clean_tok = lambda s: re.sub(r"[^a-z0-9]", "", str(s).lower())
+        d_norm = clean_tok(district_clean)
+        d_nothe = clean_tok(re.sub(r"^(the\s+)", "", district_clean.lower()))
+
+        for valid in valid_districts:
+            v_norm = clean_tok(valid)
+            v_nothe = clean_tok(re.sub(r"^(the\s+)", "", valid.lower()))
+            if v_norm == d_norm or v_nothe == d_nothe:
+                matched_district = valid
+                break
+
+        if matched_district is None and len(d_norm) >= 4:
+            for valid in valid_districts:
+                v_norm = clean_tok(valid)
+                if len(v_norm) >= 4 and (v_norm.startswith(d_norm) or d_norm.startswith(v_norm)):
+                    matched_district = valid
+                    break
+
+    if matched_district is None:
+
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": "INVALID_DISTRICT",
+                "message": (
+                    f"Invalid district '{district}' "
+                    f"for state '{matched_state}'."
+                ),
+                "state": matched_state,
+                "district": district,
+                "supported_district_count": len(
+                    valid_districts
+                )
+            }
+        )
+
+    return matched_state, matched_district
+
+
+# ============================================================
+# AUTOMATIC UPDATE LIFESPAN
+# ============================================================
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
 
-    update_thread = threading.Thread(
-        target=run_automatic_updates,
-        daemon=True,
-        name="ORCA-Automatic-Update"
+    update_task = asyncio.create_task(
+        automatic_update_loop()
     )
 
-    update_thread.start()
-
-    print(
-        "[ORCA] Automatic update service started in background thread."
+    logger.info(
+        "[ORCA] Automatic update service started."
     )
 
     try:
+
         yield
 
     finally:
-        print("[ORCA] FastAPI shutdown requested.")
-        print(
-            "[ORCA] Background update thread will stop "
-            "with the service."
+
+        update_task.cancel()
+
+        try:
+
+            await update_task
+
+        except asyncio.CancelledError:
+
+            pass
+
+        logger.info(
+            "[ORCA] Automatic update service stopped."
         )
 
 
@@ -57,6 +489,11 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="ORCA Real Marine Assistant",
+    description=(
+        "ORCA - Marine Ecosystem Reasoning "
+        "with Collaborative Agents"
+    ),
+    version="1.0.0",
     lifespan=lifespan
 )
 
@@ -67,12 +504,13 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://127.0.0.1:5501",
-        "http://localhost:5501"
-    ],
+
+    allow_origins=["*"],
+
     allow_credentials=True,
+
     allow_methods=["*"],
+
     allow_headers=["*"],
 )
 
@@ -83,9 +521,13 @@ app.add_middleware(
 
 @app.get("/")
 def home():
+
     return {
         "message": "ORCA Real Backend is running!",
-        "project": "ORCA - Marine EcoSystem Reasoning with Collaborative Agents"
+        "project": (
+            "ORCA - Marine EcoSystem Reasoning "
+            "with Collaborative Agents"
+        )
     }
 
 
@@ -95,9 +537,32 @@ def home():
 
 @app.get("/health")
 def health():
+
     return {
         "status": "OK",
         "message": "ORCA backend is healthy"
+    }
+
+
+# ============================================================
+# LOCATION INFORMATION
+# ============================================================
+
+@app.get("/locations")
+def locations():
+
+    return {
+        "status": "SUCCESS",
+        "states": sorted(
+            SUPPORTED_STATES
+        ),
+        "districts": {
+            state: sorted(
+                districts
+            )
+            for state, districts
+            in ORCA_DISTRICTS.items()
+        }
     }
 
 
@@ -106,8 +571,20 @@ def health():
 # ============================================================
 
 @app.get("/ocean")
-def ocean(state: str = "Tamil Nadu"):
-    return ocean_agent(state)
+def ocean(
+    state: str = "Tamil Nadu",
+    district: str = None
+):
+
+    state, district = validate_location(
+        state,
+        district
+    )
+
+    return ocean_agent(
+        state,
+        district
+    )
 
 
 # ============================================================
@@ -115,8 +592,20 @@ def ocean(state: str = "Tamil Nadu"):
 # ============================================================
 
 @app.get("/weather")
-def weather(state: str = "Tamil Nadu"):
-    return weather_agent(state)
+def weather(
+    state: str = "Tamil Nadu",
+    district: str = None
+):
+
+    state, district = validate_location(
+        state,
+        district
+    )
+
+    return weather_agent(
+        state,
+        district
+    )
 
 
 # ============================================================
@@ -128,7 +617,16 @@ def gis(
     state: str = "Tamil Nadu",
     district: str = None
 ):
-    return gis_agent(state)
+
+    state, district = validate_location(
+        state,
+        district
+    )
+
+    return gis_agent(
+        state,
+        district
+    )
 
 
 # ============================================================
@@ -136,8 +634,20 @@ def gis(
 # ============================================================
 
 @app.get("/pfz")
-def pfz(state: str = "Tamil Nadu"):
-    return pfz_agent(state)
+def pfz(
+    state: str = "Tamil Nadu",
+    district: str = None
+):
+
+    state, district = validate_location(
+        state,
+        district
+    )
+
+    return pfz_agent(
+        state,
+        district
+    )
 
 
 # ============================================================
@@ -145,8 +655,20 @@ def pfz(state: str = "Tamil Nadu"):
 # ============================================================
 
 @app.get("/safety")
-def safety(state: str = "Tamil Nadu"):
-    return safety_agent(state)
+def safety(
+    state: str = "Tamil Nadu",
+    district: str = None
+):
+
+    state, district = validate_location(
+        state,
+        district
+    )
+
+    return safety_agent(
+        state,
+        district
+    )
 
 
 # ============================================================
@@ -154,8 +676,20 @@ def safety(state: str = "Tamil Nadu"):
 # ============================================================
 
 @app.get("/satellite")
-def satellite(state: str = "Tamil Nadu"):
-    return satellite_agent(state)
+def satellite(
+    state: str = "Tamil Nadu",
+    district: str = None
+):
+
+    state, district = validate_location(
+        state,
+        district
+    )
+
+    return satellite_agent(
+        state,
+        district
+    )
 
 
 # ============================================================
@@ -163,61 +697,17 @@ def satellite(state: str = "Tamil Nadu"):
 # ============================================================
 
 @app.get("/language")
-def language(question: str = ""):
-    return language_agent(question)
+def language(
+    question: str = ""
+):
+
+    return language_agent(
+        question
+    )
 
 
 # ============================================================
-# COLLABORATIVE AGENTS
-# ============================================================
-
-@app.get("/agents")
-def get_agents():
-
-    return {
-        "status": "SUCCESS",
-        "system": "ORCA Collaborative Agent System",
-        "agent_count": 6,
-
-        "agents": [
-            {
-                "name": "Ocean Agent",
-                "role": "Ocean and marine condition analysis"
-            },
-            {
-                "name": "Weather Agent",
-                "role": "Weather and forecast analysis"
-            },
-            {
-                "name": "GIS Agent",
-                "role": "Geospatial and location reasoning"
-            },
-            {
-                "name": "PFZ Agent",
-                "role": "Potential Fishing Zone intelligence"
-            },
-            {
-                "name": "Marine Safety Agent",
-                "role": "Marine safety and risk analysis"
-            },
-            {
-                "name": "Satellite Agent",
-                "role": "Satellite-derived marine intelligence"
-            }
-        ],
-
-        "source": "ORCA Backend",
-
-        "note": (
-            "Agent outputs are based on available authoritative "
-            "data sources and ORCA reasoning. They do not represent "
-            "fabricated live marine observations."
-        )
-    }
-
-
-# ============================================================
-# ORCA REASONING
+# REASONING
 # ============================================================
 
 @app.get("/reasoning")
@@ -227,35 +717,60 @@ def reasoning(
     district: str = None
 ):
 
+    # --------------------------------------------------------
+    # Validate location BEFORE running any agents
+    # --------------------------------------------------------
+
+    state, district = validate_location(
+        state,
+        district
+    )
+
+    logger.info(
+        "[ORCA] Reasoning request | state=%s | district=%s",
+        state,
+        district
+    )
+
     try:
 
         from orca_reasoning import orca_reasoning
 
         result = orca_reasoning(
             question,
-            state
+            state,
+            district
         )
+
+        # Make sure canonical validated location
+        # is returned to the frontend.
 
         result["state"] = state
         result["district"] = district
 
         return result
 
+    except HTTPException:
+
+        raise
+
     except Exception as error:
 
-        return {
-            "agent": "ORCA Reasoning Layer",
-            "status": "ERROR",
-            "question": question,
-            "state": state,
-            "district": district,
-            "message": "Unable to generate ORCA reasoning.",
-            "error": str(error)
-        }
+        logger.exception(
+            "[ORCA] Reasoning error"
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "ORCA reasoning service encountered "
+                "an internal error."
+            )
+        )
 
 
 # ============================================================
-# ORCA ASSISTANT
+# ASK
 # ============================================================
 
 @app.get("/ask")
@@ -265,10 +780,17 @@ def ask(
     district: str = None
 ):
 
-    return reasoning(
-        question,
+    # Validate here too so /ask behaves consistently.
+
+    state, district = validate_location(
         state,
         district
+    )
+
+    return reasoning(
+        question=question,
+        state=state,
+        district=district
     )
 
 
@@ -281,45 +803,17 @@ def forecast_history(
     state: str = "Tamil Nadu"
 ):
 
+    state = validate_state(
+        state
+    )
+
     try:
 
         from db_connection import get_connection
 
-        # ----------------------------------------------------
-        # FRONTEND STATE -> DATABASE REGION
-        # ----------------------------------------------------
-
-        region_map = {
-
-            "Tamil Nadu":
-                "Tamil Nadu / Bay of Bengal",
-
-            "Kerala":
-                "Kerala / Arabian Sea",
-
-            "Karnataka":
-                "Karnataka / Arabian Sea",
-
-            "Gujarat":
-                "Gujarat / Arabian Sea"
-        }
-
-        database_region = region_map.get(
-            state,
-            state
-        )
-
-        # ----------------------------------------------------
-        # DATABASE CONNECTION
-        # ----------------------------------------------------
-
         connection = get_connection()
 
         cursor = connection.cursor()
-
-        # ----------------------------------------------------
-        # GET FORECAST DATA
-        # ----------------------------------------------------
 
         cursor.execute(
             """
@@ -333,14 +827,13 @@ def forecast_history(
             ORDER BY forecast_time DESC
             LIMIT 50
             """,
-            (database_region,)
+            (state,)
         )
 
         rows = cursor.fetchall()
 
-        # ----------------------------------------------------
-        # FORMAT RESPONSE
-        # ----------------------------------------------------
+        cursor.close()
+        connection.close()
 
         data = []
 
@@ -348,62 +841,62 @@ def forecast_history(
 
             data.append(
                 {
-                    "forecast_time":
+                    "forecast_time": (
                         row[0].isoformat()
-                        if row[0]
-                        else None,
+                        if hasattr(
+                            row[0],
+                            "isoformat"
+                        )
+                        else row[0]
+                    ),
 
-                    "wind_speed_ms":
-                        row[1],
+                    "wind_speed_ms": row[1],
 
-                    "wave_height_m":
-                        row[2],
+                    "wave_height_m": row[2],
 
-                    "source":
-                        row[3]
+                    "source": row[3]
                 }
             )
 
-        # ----------------------------------------------------
-        # CLOSE DATABASE
-        # ----------------------------------------------------
-
-        cursor.close()
-        connection.close()
-
-        # ----------------------------------------------------
-        # RESPONSE
-        # ----------------------------------------------------
-
         return {
-
             "status": "SUCCESS",
-
             "state": state,
-
-            "region": database_region,
-
             "count": len(data),
-
             "data": data
         }
 
     except Exception as error:
 
-        print(
-            f"[ORCA] Forecast history error: {error}"
+        logger.exception(
+            "[ORCA] Forecast history error"
         )
 
-        return {
-
-            "status": "ERROR",
-
-            "state": state,
-
-            "count": 0,
-
-            "data": [],
-
-            "message":
+        raise HTTPException(
+            status_code=500,
+            detail=(
                 "Forecast history could not be loaded."
-        }
+            )
+        )
+
+
+# ============================================================
+# GLOBAL EXCEPTION HANDLER
+# ============================================================
+
+@app.exception_handler(Exception)
+async def global_exception_handler(
+    request,
+    exc
+):
+
+    logger.exception(
+        "[ORCA] Unhandled exception: %s",
+        exc
+    )
+
+    return {
+        "status": "ERROR",
+        "message": (
+            "ORCA backend encountered an internal error."
+        )
+    }

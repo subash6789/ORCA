@@ -538,17 +538,28 @@ async function loadSatelliteModule() {
                 "regionSelect"
             );
 
+        const districtSelect =
+            document.getElementById(
+                "districtSelect"
+            );
+
 
         const region =
             regionSelect
                 ? regionSelect.value
-                : "North Tamil Nadu";
+                : "Tamil Nadu";
+
+        const district =
+            districtSelect
+                ? districtSelect.value
+                : "";
 
 
         const result =
             await safeApiCall(
                 getSatelliteData,
-                region
+                region,
+                district
             );
 
 
@@ -612,10 +623,24 @@ function setupSatelliteModule() {
             "regionSelect"
         );
 
+    const districtSelect =
+        document.getElementById(
+            "districtSelect"
+        );
+
 
     if (regionSelect) {
 
         regionSelect.addEventListener(
+            "change",
+            loadSatelliteModule
+        );
+
+    }
+
+    if (districtSelect) {
+
+        districtSelect.addEventListener(
             "change",
             loadSatelliteModule
         );

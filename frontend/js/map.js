@@ -559,11 +559,21 @@ async function loadGISBackendData() {
             "regionSelect"
         );
 
+    const districtSelect =
+        document.getElementById(
+            "districtSelect"
+        );
+
 
     const region =
         regionSelect
             ? regionSelect.value
             : "North Tamil Nadu";
+
+    const district =
+        districtSelect
+            ? districtSelect.value
+            : "";
 
 
     try {
@@ -571,7 +581,8 @@ async function loadGISBackendData() {
         const result =
             await safeApiCall(
                 getGISData,
-                region
+                region,
+                district
             );
 
 
@@ -705,18 +716,29 @@ function setupGISRegionChange() {
             "regionSelect"
         );
 
+    const districtSelect =
+        document.getElementById(
+            "districtSelect"
+        );
 
-    if (!regionSelect) return;
 
+    if (regionSelect) {
+        regionSelect.addEventListener(
+            "change",
+            () => {
+                loadGISBackendData();
+            }
+        );
+    }
 
-    regionSelect.addEventListener(
-        "change",
-        () => {
-
-            loadGISBackendData();
-
-        }
-    );
+    if (districtSelect) {
+        districtSelect.addEventListener(
+            "change",
+            () => {
+                loadGISBackendData();
+            }
+        );
+    }
 }
 
 

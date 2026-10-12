@@ -32,6 +32,18 @@ document.addEventListener("DOMContentLoaded", () => {
         return "Tamil Nadu";
     }
 
+    function getSelectedDistrict() {
+
+        const districtSelect =
+            document.getElementById("districtSelect");
+
+        if (districtSelect && districtSelect.value) {
+            return districtSelect.value;
+        }
+
+        return "";
+    }
+
 
     /* =====================================================
        ADD USER MESSAGE
@@ -352,12 +364,16 @@ document.addEventListener("DOMContentLoaded", () => {
         const region =
             getSelectedRegion();
 
+        const district =
+            getSelectedDistrict();
+
         try {
 
             const result =
                 await askORCA(
                     question,
-                    region
+                    region,
+                    district
                 );
 
             if (!result) {
