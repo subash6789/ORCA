@@ -448,11 +448,73 @@ def validate_location(
 
 
 # ============================================================
+# DATABASE SCHEMA MIGRATION
+# ============================================================
+
+def ensure_database_schema():
+    """
+    Ensure all required tables and columns exist in PostgreSQL.
+    Safely and idempotently adds missing columns (e.g. source, data_status)
+    without modifying existing schemas or dropping data.
+    """
+    try:
+        from db_connection import get_connection
+        conn = get_connection()
+        cur = conn.cursor()
+
+        # 1. Ensure columns exist on ocean_observation
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS public.ocean_observation (
+                id SERIAL PRIMARY KEY,
+                data_time TIMESTAMP,
+                region VARCHAR(100),
+                sst_c DOUBLE PRECISION,
+                ssh_m DOUBLE PRECISION,
+                salinity DOUBLE PRECISION,
+                current_speed_ms DOUBLE PRECISION,
+                mld_m DOUBLE PRECISION,
+                retrieved_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                wind_speed_ms DOUBLE PRECISION,
+                wave_height_m DOUBLE PRECISION,
+                source TEXT,
+                data_status TEXT,
+                latitude DOUBLE PRECISION,
+                longitude DOUBLE PRECISION
+            );
+        """)
+
+        # Add any missing columns to ocean_observation idempotently
+        ocean_cols = [
+            ("source", "TEXT"),
+            ("data_status", "TEXT"),
+            ("latitude", "DOUBLE PRECISION"),
+            ("longitude", "DOUBLE PRECISION"),
+            ("wind_speed_ms", "DOUBLE PRECISION"),
+            ("wave_height_m", "DOUBLE PRECISION"),
+            ("retrieved_at", "TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
+        ]
+        for col_name, col_type in ocean_cols:
+            cur.execute(f"""
+                ALTER TABLE public.ocean_observation
+                ADD COLUMN IF NOT EXISTS {col_name} {col_type};
+            """)
+
+        conn.commit()
+        cur.close()
+        conn.close()
+        logger.info("[ORCA] Database schema verified and updated successfully.")
+    except Exception as e:
+        logger.warning(f"[ORCA] Database schema check encountered notice/warning: {e}")
+
+
+# ============================================================
 # AUTOMATIC UPDATE LIFESPAN
 # ============================================================
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+
+    ensure_database_schema()
 
     update_task = asyncio.create_task(
         automatic_update_loop()

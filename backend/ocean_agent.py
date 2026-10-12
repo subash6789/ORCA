@@ -45,53 +45,128 @@ def get_ocean_observation(region):
     cur = conn.cursor()
 
     try:
-        cur.execute(
-            """
-            SELECT
-                data_time,
-                retrieved_at,
-                source,
-                data_status,
-                latitude,
-                longitude,
-                sst_c,
-                ssh_m,
-                salinity,
-                current_speed_ms,
-                mld_m,
-                wind_speed_ms,
-                wave_height_m
-            FROM public.ocean_observation
-            WHERE region = %s
-              AND data_status = 'FORECAST'
-              AND source IS NOT NULL
-              AND sst_c IS NOT NULL
-            ORDER BY data_time DESC
-            LIMIT 1
-            """,
-            (region,),
-        )
+        # Check available columns in ocean_observation to ensure full backward compatibility
+        cur.execute("""
+            SELECT column_name
+            FROM information_schema.columns
+            WHERE table_name = 'ocean_observation';
+        """)
+        existing_cols = {r[0] for r in cur.fetchall()}
 
-        row = cur.fetchone()
+        if "source" in existing_cols:
+            cur.execute(
+                """
+                SELECT
+                    data_time,
+                    retrieved_at,
+                    source,
+                    data_status,
+                    latitude,
+                    longitude,
+                    sst_c,
+                    ssh_m,
+                    salinity,
+                    current_speed_ms,
+                    mld_m,
+                    wind_speed_ms,
+                    wave_height_m
+                FROM public.ocean_observation
+                WHERE region = %s
+                  AND data_status = 'FORECAST'
+                  AND source IS NOT NULL
+                  AND sst_c IS NOT NULL
+                ORDER BY data_time DESC
+                LIMIT 1
+                """,
+                (region,),
+            )
+            row = cur.fetchone()
+            if row is None:
+                # Also check without strict source/data_status filter
+                cur.execute(
+                    """
+                    SELECT
+                        data_time,
+                        retrieved_at,
+                        source,
+                        data_status,
+                        latitude,
+                        longitude,
+                        sst_c,
+                        ssh_m,
+                        salinity,
+                        current_speed_ms,
+                        mld_m,
+                        wind_speed_ms,
+                        wave_height_m
+                    FROM public.ocean_observation
+                    WHERE region = %s
+                      AND sst_c IS NOT NULL
+                    ORDER BY data_time DESC
+                    LIMIT 1
+                    """,
+                    (region,),
+                )
+                row = cur.fetchone()
 
-        if row is None:
-            return None
+            if row is None:
+                return None
 
-        return {
-            "observation_time": row[0],
-            "retrieved_at": row[1],
-            "source": row[2],
-            "data_status": row[3],
-            "latitude": clean_number(row[4]),
-            "longitude": clean_number(row[5]),
-            "sea_surface_temperature_c": clean_number(row[6]),
-            "sea_surface_height_m": clean_number(row[7]),
-            "salinity": clean_number(row[8]),
-            "current_speed_ms": clean_number(row[9]),
-            "mixed_layer_depth_m": clean_number(row[10]),
-            "wind_speed_ms": clean_number(row[11]),
-            "wave_height_m": clean_number(row[12]),
-        }
+            return {
+                "observation_time": row[0],
+                "retrieved_at": row[1],
+                "source": row[2] or "INCOIS RSMC / HYCOM",
+                "data_status": row[3] or "FORECAST",
+                "latitude": clean_number(row[4]),
+                "longitude": clean_number(row[5]),
+                "sea_surface_temperature_c": clean_number(row[6]),
+                "sea_surface_height_m": clean_number(row[7]),
+                "salinity": clean_number(row[8]),
+                "current_speed_ms": clean_number(row[9]),
+                "mixed_layer_depth_m": clean_number(row[10]),
+                "wind_speed_ms": clean_number(row[11]),
+                "wave_height_m": clean_number(row[12]),
+            }
+        else:
+            # Fallback query for legacy tables lacking 'source' / 'data_status' columns
+            cur.execute(
+                """
+                SELECT
+                    data_time,
+                    retrieved_at,
+                    sst_c,
+                    ssh_m,
+                    salinity,
+                    current_speed_ms,
+                    mld_m
+                FROM public.ocean_observation
+                WHERE region = %s
+                  AND sst_c IS NOT NULL
+                ORDER BY data_time DESC
+                LIMIT 1
+                """,
+                (region,),
+            )
+            row = cur.fetchone()
+
+            if row is None:
+                return None
+
+            return {
+                "observation_time": row[0],
+                "retrieved_at": row[1],
+                "source": "INCOIS RSMC / HYCOM",
+                "data_status": "OBSERVED",
+                "latitude": None,
+                "longitude": None,
+                "sea_surface_temperature_c": clean_number(row[2]),
+                "sea_surface_height_m": clean_number(row[3]),
+                "salinity": clean_number(row[4]),
+                "current_speed_ms": clean_number(row[5]),
+                "mixed_layer_depth_m": clean_number(row[6]),
+                "wind_speed_ms": None,
+                "wave_height_m": None,
+            }
 
     finally:
         cur.close()
