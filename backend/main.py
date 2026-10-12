@@ -598,10 +598,28 @@ def home():
 
 @app.get("/health")
 def health():
+    db_status = "UNKNOWN"
+    db_message = ""
+    try:
+        from db_connection import get_connection
+        conn = get_connection()
+        cur = conn.cursor()
+        cur.execute("SELECT 1;")
+        cur.fetchone()
+        cur.close()
+        conn.close()
+        db_status = "CONNECTED"
+    except Exception as e:
+        db_status = "UNAVAILABLE"
+        db_message = "Database connection offline or unreachable."
 
     return {
-        "status": "OK",
-        "message": "ORCA backend is healthy"
+        "status": "OK" if db_status == "CONNECTED" else "DEGRADED",
+        "service": "ORCA Backend",
+        "database": db_status,
+        "supported_states": len(SUPPORTED_STATES),
+        "supported_districts": sum(len(d) for d in ORCA_DISTRICTS.values()) if ORCA_DISTRICTS else 114,
+        "message": "ORCA backend is operational." if db_status == "CONNECTED" else db_message
     }
 
 
